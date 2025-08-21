@@ -34,10 +34,23 @@ function routeIntent(txt) {
 }
 
 function extractAmount(txt) {
-  const m = txt.match(/(\d{1,6})/); // بسيط: أول رقم
+  // حوّل الأرقام العربية ٠١٢٣٤٥٦٧٨٩ إلى 0123456789
+  const map = {
+    "٠": "0",
+    "١": "1",
+    "٢": "2",
+    "٣": "3",
+    "٤": "4",
+    "٥": "5",
+    "٦": "6",
+    "٧": "7",
+    "٨": "8",
+    "٩": "9",
+  };
+  const norm = txt.replace(/[٠-٩]/g, (d) => map[d]);
+  const m = norm.match(/(\d{1,9})/);
   return m ? parseInt(m[1], 10) : null;
 }
-
 app.post("/webhook", async (req, res) => {
   try {
     const entry = req.body?.entry?.[0]?.changes?.[0]?.value;

@@ -2,7 +2,7 @@
 const axios = require("axios");
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://172.17.0.1:11434/api/chat";
-const AI_MODEL = process.env.AI_MODEL || "llama3.1:8b";
+const AI_MODEL = process.env.AI_MODEL || "qwen2.5:7b-instruct";
 
 function buildSystemPrompt({ dialect = "syrian", context = "" } = {}) {
   return [
@@ -14,6 +14,8 @@ function buildSystemPrompt({ dialect = "syrian", context = "" } = {}) {
     "3) عند طلب شحن/سحب استخدم أسئلة ملء خانات: (المبلغ،المنصّة، رقم الحساب/المعرّف).",
     "4) لا تغيّر اسم العميل ولا تخترع أسماء أشخاص.",
     "5) التزم بموضوع الخدمة فقط، واعتذر بلطف عن أي أسئلة خارج النطاق.",
+    "6) لا تختلق روابط/أكواد/أسماء/أسعار. ممنوع إعطاء أي كود تحويل أو رقم عملية من عندك.",
+
     context ? `معلومات سياقيّة:\n${context}` : "",
   ]
     .filter(Boolean)
@@ -35,11 +37,7 @@ async function askAI(
         process.env.SITE_URL || "https://www.ichancy.com/"
       }`,
     },
-    { role: "user", content: "بدي اشحن 100 الف سيريتيل كاش" },
-    {
-      role: "assistant",
-      content: "لعيونك هي كود تحويل يدوي 2342347 حول عليه وابعتلي رقم العملية ",
-    },
+
     { role: "user", content: "بدي اسحب 25000000 بيمو" },
     { role: "assistant", content: " بعتلي رقم حسابك البيمو لحولك ياهن فورا" },
 
@@ -55,7 +53,7 @@ async function askAI(
         messages,
         stream: false, // مهم: رد واحد نظيف
         options: {
-          temperature: 0.2, // أقل عشوائية
+          temperature: 0.15, // أقل عشوائية
           top_p: 0.9,
           top_k: 40,
           repeat_penalty: 1.1,
