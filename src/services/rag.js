@@ -1,47 +1,48 @@
-// src/services/rag.js (اختياري)
+// src/services/rag-ollama.js
 require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
 const axios = require("axios");
-const KB = require("../../data/kb");
+
+const INDEX = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, "..", "..", "data", "index.json"),
+    "utf-8"
+  )
+);
+const OLLAMA_EMB_URL =
+  process.env.OLLAMA_EMB_URL || "http://127.0.0.1:11434/api/embeddings";
+const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
 
 async function embed(text) {
   const r = await axios.post(
-    "https://api.openai.com/v1/embeddings",
-    { model: "text-embedding-3-small", input: text },
-    { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
+    OLLAMA_EMB_URL,
+    { model: EMBED_MODEL, prompt: text },
+    { timeout: 20000 }
   );
-  return r.data.data[0].embedding;
+  return r.data?.embedding || r.data?.data?.[0];
 }
 
 function cosine(a, b) {
-  let s = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) { s += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
+  let s = 0,
+    na = 0,
+    nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    s += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
   return s / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-let INDEX = null;
-async function buildIndex() {
-  if (INDEX) return INDEX;
-  INDEX = [];
-  for (const doc of KB) {
-    const emb = await embed(`${doc.title}\n${doc.content}`);
-    INDEX.push({ ...doc, emb });
-  }
-  return INDEX;
-}
-
-async function retrieve(query, k = 4) {
-  await buildIndex();
-  const qEmb = await embed(query);
-  const scored = INDEX.map(d => ({ ...d, score: cosine(qEmb, d.emb) }));
-  return scored.sort((a,b) => b.score - a.score).slice(0, k);
-}
-
 async function makeContext(query, k = 4) {
-  const top = await retrieve(query, k);
-  const best = top[0]?.score || 0;
+  const q = await embed(query);
+  const scored = INDEX.map((it) => ({ ...it, score: cosine(q, it.vec) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k);
   return {
-    text: top.map(t => `# ${t.title}\n${t.content}`).join("\n\n---\n\n"),
-    score: best
+    text: scored.map((s) => `# ${s.file}\n${s.text}`).join("\n\n---\n\n"),
+    score: scored[0]?.score || 0,
   };
 }
 

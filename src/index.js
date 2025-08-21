@@ -29,18 +29,27 @@ app.post("/webhook", async (req, res) => {
     const msg = entry?.messages?.[0];
 
     if (msg?.type === "text") {
-      const from = msg.from;                 // رقم العميل (E.164)
-      const text = msg.text?.body || "";     // نص الرسالة
+      const from = msg.from; // رقم العميل (E.164)
+      const text = msg.text?.body || ""; // نص الرسالة
 
       const history = convo.get(from) || [];
       // اختياري: سياق من RAG
-      // const ctx = await makeContext(text); 
+      // const ctx = await makeContext(text);
       // const context = ctx.text; const score = ctx.score;
+      const ctx = await makeContext(text);
+      const aiReply = await askAI(text, {
+        history,
+        dialect: "syrian",
+        context: ctx.text,
+      });
 
-      const aiReply = await askAI(text, { history, dialect: "syrian" });
       await sendWhatsAppText(from, aiReply);
 
-      const updated = [...history, { role: "user", content: text }, { role: "assistant", content: aiReply }].slice(-8);
+      const updated = [
+        ...history,
+        { role: "user", content: text },
+        { role: "assistant", content: aiReply },
+      ].slice(-8);
       convo.set(from, updated);
     }
   } catch (e) {
