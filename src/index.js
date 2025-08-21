@@ -22,44 +22,97 @@ app.get("/webhook", (req, res) => {
   }
   return res.sendStatus(403);
 });
+const SITE_URL = process.env.SITE_URL || "https://www.ichancy.com/";
 
-// استقبال الرسائل (POST)
+function routeIntent(txt) {
+  const t = txt.normalize("NFKC").toLowerCase();
+  if (/(رابط|لينك|website|site|موقع)/i.test(t)) return "link";
+  if (/(شحن|اشحن|رصيد|مبلغ| ?up)/i.test(t)) return "topup";
+  if (/(سحب|اسحب|withdraw)/i.test(t)) return "withdraw";
+  if (/(usdt|بيمو|شام كاش|سيريتيل كاش)/i.test(t)) return "paymentmethod";
+  return null;
+}
+
+function extractAmount(txt) {
+  const m = txt.match(/(\d{1,6})/); // بسيط: أول رقم
+  return m ? parseInt(m[1], 10) : null;
+}
+
 app.post("/webhook", async (req, res) => {
   try {
-    const value = req.body?.entry?.[0]?.changes?.[0]?.value;
-    const msg = value?.messages?.[0];
+    const entry = req.body?.entry?.[0]?.changes?.[0]?.value;
+    const msg = entry?.messages?.[0];
+    if (msg?.type !== "text") return res.sendStatus(200);
 
-    if (msg?.type === "text") {
-      const from = msg.from; // رقم العميل (E.164)
-      const text = (msg.text?.body || "").trim();
+    const from = msg.from;
+    const text = msg.text?.body || "";
+    const hist = convo.get(from) || [];
 
-      const history = convo.get(from) || [];
-
-      // ❌ RAG معطّل مؤقتًا
-      // const ctx = await makeContext(text);
-      // const context = ctx.text;
-      const context = ""; // سياق فارغ
-
-      const aiReply = await askAI(text, {
-        history,
-        dialect: "syrian",
-        context,
-      });
-
-      await sendWhatsAppText(from, aiReply);
-
-      const updated = [
-        ...history,
-        { role: "user", content: text },
-        { role: "assistant", content: aiReply },
-      ].slice(-8);
-      convo.set(from, updated);
+    // 1) روتر نوايا سريع
+    const intent = routeIntent(text);
+    if (intent === "link") {
+      await sendWhatsAppText(from, `رابط موقعنا: ${SITE_URL}`);
+      convo.set(
+        from,
+        [
+          ...hist,
+          { role: "user", content: text },
+          { role: "assistant", content: `رابط موقعنا: ${SITE_URL}` },
+        ].slice(-8)
+      );
+      return res.sendStatus(200);
     }
+
+    if (intent === "topup") {
+      const amount = extractAmount(text);
+      if (!amount) {
+        await sendWhatsAppText(
+          from,
+          "قدّيش الكميّة/المبلغ اللي بدك تشحنه؟ واذكر اللعبة/المنصّة ومعرّف الحساب."
+        );
+        return res.sendStatus(200);
+      }
+      await sendWhatsAppText(
+        from,
+        `تمام! سجّلت ${amount}. خبرني اللعبة/المنصّة ومعرّف الحساب وطريقة الدفع.`
+      );
+      return res.sendStatus(200);
+    }
+
+    if (intent === "withdraw") {
+      await sendWhatsAppText(
+        from,
+        "تمام للسحب—ابعث قيمة السحب، والطريقة (محفظة/تحويل...)."
+      );
+      return res.sendStatus(200);
+    }
+
+    if (intent === "paymentmethod") {
+      await sendWhatsAppText(
+        from,
+        "طرق الدفع المتوفرة حاليا هيي : سيريتيل كاش ،بيمو ، شام كاش ، USDT،بايير علما انو اقل مبلغ للشحن هو 10,000"
+      );
+      return res.sendStatus(200);
+    }
+
+    // 2) الباقي إلى LLM مع ذاكرة قصيرة
+    const aiReply = await askAI(text, {
+      history: hist,
+      dialect: "syrian",
+      context: "",
+    });
+    await sendWhatsAppText(from, aiReply);
+
+    const updated = [
+      ...hist,
+      { role: "user", content: text },
+      { role: "assistant", content: aiReply },
+    ].slice(-8);
+    convo.set(from, updated);
   } catch (e) {
     console.error("Webhook error:", e?.response?.data || e.message);
   }
-  // مهم: أعِد 200 دائمًا حتى لا تعيد Meta المحاولة
-  res.sendStatus(200);
+  res.status(200).json({ status: "ok" });
 });
 
 const PORT = Number(process.env.PORT) || 3000;

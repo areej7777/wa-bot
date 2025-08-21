@@ -6,9 +6,15 @@ const AI_MODEL = process.env.AI_MODEL || "llama3.1:8b";
 
 function buildSystemPrompt({ dialect = "syrian", context = "" } = {}) {
   return [
-    "أنت مساعد واتساب ترد باللهجة السورية القصيرة والمهذبة.",
-    "اختصر الرد بـ 2–4 أسطر.",
-    context ? `معلومات سياقية:\n${context}` : "",
+    "أنتَ مساعد واتساب لشركة شحن وسحب رصيد ألعاب.",
+    "الأسلوب: لهجة سورية مهذّبة، قصيرة وواضحة (سطرين–أربعة كحدّ أقصى).",
+    "القواعد:",
+    "1) لا تختلق معلومات أو روابط. إن لم تملك المعلومة قل: «ما عندي تفاصيل دقيقة، بقدر اساعدك بخطوات عامة» واسأل سؤال توضيحي.",
+    "2) عند طلب الرابط أعطِ دوميننا الثابت فقط.",
+    "3) عند طلب شحن/سحب استخدم أسئلة ملء خانات: (المبلغ،المنصّة، رقم الحساب/المعرّف).",
+    "4) لا تغيّر اسم العميل ولا تخترع أسماء أشخاص.",
+    "5) التزم بموضوع الخدمة فقط، واعتذر بلطف عن أي أسئلة خارج النطاق.",
+    context ? `معلومات سياقيّة:\n${context}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -19,34 +25,51 @@ async function askAI(
   { history = [], dialect = "syrian", context = "" } = {}
 ) {
   const system = buildSystemPrompt({ dialect, context });
-
   const messages = [
     { role: "system", content: system },
+    // أمثلة صغيرة تُثبّت السلوك
+    { role: "user", content: "بدي الرابط" },
+    {
+      role: "assistant",
+      content: `رابط موقعنا: ${
+        process.env.SITE_URL || "https://www.ichancy.com/"
+      }`,
+    },
+    { role: "user", content: "بدي اشحن 100 الف سيريتيل كاش" },
+    {
+      role: "assistant",
+      content: "لعيونك هي كود تحويل يدوي 2342347 حول عليه وابعتلي رقم العملية ",
+    },
+    { role: "user", content: "بدي اسحب 25000000 بيمو" },
+    { role: "assistant", content: " بعتلي رقم حسابك البيمو لحولك ياهن فورا" },
+
     ...history,
     { role: "user", content: userText },
   ];
 
   try {
-    // مهم: stream=false عشان يرجّع رد واحد في message.content
     const r = await axios.post(
       OLLAMA_URL,
       {
         model: AI_MODEL,
         messages,
-        stream: false,
-        options: { temperature: 0.4 },
+        stream: false, // مهم: رد واحد نظيف
+        options: {
+          temperature: 0.2, // أقل عشوائية
+          top_p: 0.9,
+          top_k: 40,
+          repeat_penalty: 1.1,
+          num_ctx: 4096,
+        },
       },
-      { timeout: 60000 }
+      { timeout: 60_000 }
     );
 
     const content = r.data?.message?.content?.trim();
-    if (content) return content;
-
-    console.warn("AI empty content:", r.data);
-    return "تمام، كيف فيني ساعدك؟";
+    return content || "اهلا بالملك الاكابر، كيف فيني ساعدك؟";
   } catch (err) {
     console.error("AI error:", err?.response?.data || err.message);
-    return "صار خلل بسيط بالذكاء، جرّب تكتب طلبك بجملة واضحة.";
+    return "ممكن تشرحلي اكتر شو طلبك";
   }
 }
 
