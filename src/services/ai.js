@@ -1,68 +1,52 @@
-// src/services/ai.js
-require("dotenv").config();
+// services/ai.js
 const axios = require("axios");
 
-const MODEL = process.env.AI_MODEL || "llama3.1:8b";
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434/api/chat";
-const TEMPERATURE = Number(process.env.AI_TEMPERATURE || 0.5);
-const MAX_TOKENS = Number(process.env.AI_MAX_TOKENS || 350);
+const OLLAMA_URL = process.env.OLLAMA_URL || "http://172.17.0.1:11434/api/chat";
+const AI_MODEL = process.env.AI_MODEL || "llama3.1:8b";
 
-function buildSystemPrompt({ dialect = "syrian", allowArabizi = true } = {}) {
-  const lines = [
-    "انت مساعد واتساب للشركة.",
-    "رد باللهجة الشامية المهذبة أو بالعربية المبسطة حسب أسلوب المستخدم.",
-    "خليك مختصر (سطرين–4).",
-    "جاوب ضمن نطاق الخدمة؛ وإذا السؤال مو واضح اسأل سؤال توضيحي واحد.",
-    "تجنّب الألفاظ السوقية والوعود غير الدقيقة.",
-  ];
-  if (dialect === "syrian")
-    lines.push(
-      "مفردات مسموحة: شو، ليش، هيك، لسا، مو، تمام، طيب، أكيد، هلق، كتير."
-    );
-  if (allowArabizi) lines.push("إذا المستخدم كتب بعربيزي، رد بعربيزي مهذّب.");
-  return lines.join(" ");
+function buildSystemPrompt({ dialect = "syrian", context = "" } = {}) {
+  return [
+    "أنت مساعد واتساب ترد باللهجة السورية القصيرة والمهذبة.",
+    "اختصر الرد بـ 2–4 أسطر.",
+    context ? `معلومات سياقية:\n${context}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
-const sliceForWhatsApp = (s) =>
-  String(s || "")
-    .trim()
-    .slice(0, 3500) || "تمام، كيف فيني ساعدك؟";
 
 async function askAI(
   userText,
   { history = [], dialect = "syrian", context = "" } = {}
 ) {
+  const system = buildSystemPrompt({ dialect, context });
+
   const messages = [
-    { role: "system", content: buildSystemPrompt({ dialect }) },
-    context
-      ? {
-          role: "system",
-          content: `اعتمد على المعلومات التالية إن كانت مفيدة:\n${context}`,
-        }
-      : null,
-    { role: "user", content: "شو الباقات المتوفرة؟" },
-    {
-      role: "assistant",
-      content: "عنا 3 باقات: أساسية، قياسية، ومميزة. فيني وضّحلك الفرق بسرعة.",
-    },
+    { role: "system", content: system },
     ...history,
     { role: "user", content: userText },
-  ].filter(Boolean);
+  ];
 
   try {
+    // مهم: stream=false عشان يرجّع رد واحد في message.content
     const r = await axios.post(
       OLLAMA_URL,
       {
-        model: MODEL,
-        options: { temperature: TEMPERATURE, num_predict: MAX_TOKENS },
+        model: AI_MODEL,
         messages,
+        stream: false,
+        options: { temperature: 0.4 },
       },
-      { timeout: 30000 }
+      { timeout: 60000 }
     );
-    const out = r.data?.message?.content || r.data?.content || "";
-    return sliceForWhatsApp(out);
-  } catch (e) {
-    console.error("AI error:", e?.response?.data || e.message);
-    return "آسف، صار تأخير بسيط. فيني أعيد المحاولة أو خوّليك لزميلي البشري؟";
+
+    const content = r.data?.message?.content?.trim();
+    if (content) return content;
+
+    console.warn("AI empty content:", r.data);
+    return "تمام، كيف فيني ساعدك؟";
+  } catch (err) {
+    console.error("AI error:", err?.response?.data || err.message);
+    return "صار خلل بسيط بالذكاء، جرّب تكتب طلبك بجملة واضحة.";
   }
 }
 
