@@ -3,7 +3,8 @@ require("dotenv").config();
 const express = require("express");
 const { askAI } = require("./services/ai");
 const { sendWhatsAppText } = require("./services/whatsapp");
-// const { makeContext } = require("./services/rag"); // اختياري لاحقًا
+// RAG مؤقتًا غير مفعّل
+// const { makeContext } = require("./services/rag-ollama");
 
 const app = express();
 app.use(express.json());
@@ -25,22 +26,24 @@ app.get("/webhook", (req, res) => {
 // استقبال الرسائل (POST)
 app.post("/webhook", async (req, res) => {
   try {
-    const entry = req.body?.entry?.[0]?.changes?.[0]?.value;
-    const msg = entry?.messages?.[0];
+    const value = req.body?.entry?.[0]?.changes?.[0]?.value;
+    const msg = value?.messages?.[0];
 
     if (msg?.type === "text") {
       const from = msg.from; // رقم العميل (E.164)
-      const text = msg.text?.body || ""; // نص الرسالة
+      const text = (msg.text?.body || "").trim();
 
       const history = convo.get(from) || [];
-      // اختياري: سياق من RAG
+
+      // ❌ RAG معطّل مؤقتًا
       // const ctx = await makeContext(text);
-      // const context = ctx.text; const score = ctx.score;
-      const ctx = await makeContext(text);
+      // const context = ctx.text;
+      const context = ""; // سياق فارغ
+
       const aiReply = await askAI(text, {
         history,
         dialect: "syrian",
-        context: ctx.text,
+        context,
       });
 
       await sendWhatsAppText(from, aiReply);
@@ -56,10 +59,10 @@ app.post("/webhook", async (req, res) => {
     console.error("Webhook error:", e?.response?.data || e.message);
   }
   // مهم: أعِد 200 دائمًا حتى لا تعيد Meta المحاولة
-  res.status(200).json({ status: "ok" });
+  res.sendStatus(200);
 });
 
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Bot listening on ${PORT}`);
 });
