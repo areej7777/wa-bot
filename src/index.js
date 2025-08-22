@@ -3,6 +3,9 @@ require("dotenv").config();
 const express = require("express");
 const { askAI } = require("./services/ai");
 const { sendWhatsAppText } = require("./services/whatsapp");
+const { makeContext } = require("./services/rag");
+const DIRECT_ANSWER = 0.85; // رد مباشر من KB
+const CONTEXT_RANGE = 0.65; // تمرير سياق للـLLM
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -114,7 +117,41 @@ async function handleMessage(from, text) {
   ].slice(-8);
   convo.set(from, updated);
 }
+const { text: ctx, score, hits } = await makeContext(text, { k: 3 });
+console.log("RAG score:", score, "hit:", hits[0]?.id);
 
+// 1) تطابق عالي → رد مباشر من أول مقطع (مختصر)
+if (score >= DIRECT_ANSWER && hits[0]) {
+  const firstLine = hits[0].text.split("\n")[0].trim();
+  await sendWhatsAppText(from, firstLine);
+  return;
+}
+
+// 2) تطابق متوسط → مرّر السياق للـLLM
+if (score >= CONTEXT_RANGE) {
+  const aiReply = await askAI(text, {
+    history: hist,
+    dialect: "syrian",
+    context: ctx,
+  });
+  await sendWhatsAppText(from, aiReply);
+  convo.set(
+    from,
+    [
+      ...hist,
+      { role: "user", content: text },
+      { role: "assistant", content: aiReply },
+    ].slice(-8)
+  );
+  return;
+}
+
+// 3) تطابق ضعيف → سؤال توضيحي بدل التخمين
+await sendWhatsAppText(
+  from,
+  "حدّدلي اللعبة/المنصّة أو المبلغ مشان جاوبك بدقّة 👍"
+);
+return;
 // استقبال (POST) — نُعيد 200 فورًا، ونُكمل بالخلفية
 app.post("/webhook", (req, res) => {
   try {
