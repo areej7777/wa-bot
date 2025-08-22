@@ -1,22 +1,22 @@
-// services/ai.js
+// src/services/ai.js
 const axios = require("axios");
 
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://172.17.0.1:11434/api/chat";
+const SITE_URL = process.env.SITE_URL || "https://www.ichancy.com/";
+
 const AI_MODEL = process.env.AI_MODEL || "qwen2.5:7b-instruct";
+
+const OLLAMA_URL = process.env.OLLAMA_URL || "http://172.17.0.1:11434/api/chat";
 
 function buildSystemPrompt({ dialect = "syrian", context = "" } = {}) {
   return [
-    "أنتَ مساعد واتساب لشركة شحن وسحب رصيد ألعاب.",
-    "الأسلوب: لهجة سورية مهذّبة، قصيرة وواضحة (سطرين–أربعة كحدّ أقصى).",
+    "ىأنتَ مساعد واتساب لشركة شحن وسحب رصيد على موقع ايشانسي.",
+    // EDIT_HERE: style (keep it short to stay fast)
+    "الأسلوب: لهجة سورية مهذّبة، مختصرة وواضحة (حتى سطرين).",
     "القواعد:",
-    "1) لا تختلق معلومات أو روابط. إن لم تملك المعلومة قل: «ما عندي تفاصيل دقيقة، بقدر اساعدك بخطوات عامة» واسأل سؤال توضيحي.",
-    "2) عند طلب الرابط أعطِ دوميننا الثابت فقط.",
-    "3) عند طلب شحن/سحب استخدم أسئلة ملء خانات: (المبلغ،المنصّة، رقم الحساب/المعرّف).",
-    "4) لا تغيّر اسم العميل ولا تخترع أسماء أشخاص.",
-    "5) التزم بموضوع الخدمة فقط، واعتذر بلطف عن أي أسئلة خارج النطاق.",
-    "6) لا تختلق روابط/أكواد/أسماء/أسعار. ممنوع إعطاء أي كود تحويل أو رقم عملية من عندك.",
-
-    context ? `معلومات سياقيّة:\n${context}` : "",
+    `1) لا تختلق معلومات/روابط. للرابط أعطِ هذا فقط: ${SITE_URL}`,
+    "2) لشحن/سحب اسأل عن: المبلغ،  معرّف الحساب، وطريقة الدفع/الاستلام.",
+    "3) استخدم العربية/اللهجة السورية فقط.",
+    context ? `معلومات سياقية:\n${context}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -27,19 +27,18 @@ async function askAI(
   { history = [], dialect = "syrian", context = "" } = {}
 ) {
   const system = buildSystemPrompt({ dialect, context });
+
   const messages = [
     { role: "system", content: system },
-    // أمثلة صغيرة تُثبّت السلوك
+
+    // Few-shot صغيرة لتثبيت السلوك (يمكن حذفها إن رغبت)
     { role: "user", content: "بدي الرابط" },
+    { role: "assistant", content: `رابط موقعنا: ${SITE_URL}` },
+    { role: "user", content: "بدي اشحن 100 سيريتيل كاش " },
     {
       role: "assistant",
-      content: `رابط موقعنا: ${
-        process.env.SITE_URL || "https://www.ichancy.com/"
-      }`,
+      content: "تمام—أبعت المعرّف/ID ورقم الموبايل وطريقة الدفع، وبباشر الطلب.",
     },
-
-    { role: "user", content: "بدي اسحب 25000000 بيمو" },
-    { role: "assistant", content: " بعتلي رقم حسابك البيمو لحولك ياهن فورا" },
 
     ...history,
     { role: "user", content: userText },
@@ -51,23 +50,27 @@ async function askAI(
       {
         model: AI_MODEL,
         messages,
-        stream: false, // مهم: رد واحد نظيف
+        stream: false,
         options: {
-          temperature: 0.15, // أقل عشوائية
+          // EDIT_HERE: response length / speed tradeoff
+          num_predict: 120, // shorter & faster
+          temperature: 0.2, // more obedient
           top_p: 0.9,
           top_k: 40,
           repeat_penalty: 1.1,
-          num_ctx: 4096,
+          num_ctx: 2048,
         },
       },
-      { timeout: 60_000 }
+      { timeout: 30000 }
     );
 
-    const content = r.data?.message?.content?.trim();
-    return content || "اهلا بالملك الاكابر، كيف فيني ساعدك؟";
+    return (
+      (r.data?.message?.content || "").trim() ||
+      "تمام—خبرني تفاصيل طلبك (شحن/سحب + المبلغ + المعرّف)."
+    );
   } catch (err) {
     console.error("AI error:", err?.response?.data || err.message);
-    return "ممكن تشرحلي اكتر شو طلبك";
+    return "صار خلل بسيط. اكتب طلبك باختصار (شحن/سحب + المبلغ + المعرّف).";
   }
 }
 
