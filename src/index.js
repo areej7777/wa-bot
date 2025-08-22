@@ -4,8 +4,10 @@ const express = require("express");
 const { askAI } = require("./services/ai");
 const { sendWhatsAppText } = require("./services/whatsapp");
 const { makeContext } = require("./services/rag");
-const DIRECT_ANSWER = 0.85; // رد مباشر من KB
-const CONTEXT_RANGE = 0.65; // تمرير سياق للـLLM
+
+// عتبات RAG
+const DIRECT_ANSWER = 0.85; // ≥ → رد مباشر من KB
+const CONTEXT_RANGE = 0.65; // [0.65..0.85) → مرّر سياق للـLLM
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -16,17 +18,16 @@ app.get("/", (_, res) => res.status(200).send("ok"));
 // ذاكرة قصيرة + تفادي تكرار
 const convo = new Map(); // phone -> [{role,content}...]
 const seen = new Map(); // msg.id -> time
-
 function remember(id) {
   const now = Date.now();
   seen.set(id, now);
   for (const [k, t] of seen) if (now - t > 15 * 60 * 1000) seen.delete(k);
 }
 
-// EDIT_HERE: الموقع (يفضّل ضبطه كـ SITE_URL في Env بدلاً من تعديل الكود)
+// الموقع (فضّلي ضبطه من Environment)
 const SITE_URL = process.env.SITE_URL || "https://www.ichancy.com/";
 
-// EDIT_HERE: كلمات النوايا — زيدي/عدّلي كلماتك
+// نيّات سريعة
 function routeIntent(txt) {
   const t = (txt || "").normalize("NFKC").toLowerCase();
   if (/(رابط|لينك|website|site|موقع)/i.test(t)) return "link";
@@ -35,8 +36,6 @@ function routeIntent(txt) {
   if (/(سعر|اسعار|باقات|العروض)/i.test(t)) return "pricing";
   return null;
 }
-
-// EDIT_HERE: استخراج رقم/مبلغ بسيط
 function extractAmount(txt) {
   const m = (txt || "").match(/(\d{1,7})/); // up to 7 digits
   return m ? parseInt(m[1], 10) : null;
@@ -53,7 +52,7 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-// وحدة معالجة الرسالة
+// معالجة رسالة واحدة
 async function handleMessage(from, text) {
   const hist = convo.get(from) || [];
 
@@ -74,7 +73,6 @@ async function handleMessage(from, text) {
   if (intent === "topup") {
     const amount = extractAmount(text);
     if (!amount) {
-      // EDIT_HERE: صيغة الأسئلة
       await sendWhatsAppText(
         from,
         "قدّيش المبلغ/الكميّة؟ واذكر اللعبة/المنصّة ومعرّف الحساب."
@@ -102,72 +100,67 @@ async function handleMessage(from, text) {
     return;
   }
 
-  // 2) باقي الحالات إلى LLM
-  const reply = await askAI(text, {
-    history: hist,
-    dialect: "syrian",
-    context: "",
-  });
-  await sendWhatsAppText(from, reply);
+  // 2) RAG — القرار حسب الدرجة (هنا كان الخطأ عندك؛ لازم يكون داخل دالة async)
+  try {
+    const { text: ctx, score, hits } = await makeContext(text, { k: 3 });
+    console.log("RAG score:", score, "hit:", hits[0]?.id);
 
-  const updated = [
-    ...hist,
-    { role: "user", content: text },
-    { role: "assistant", content: reply },
-  ].slice(-8);
-  convo.set(from, updated);
-}
-const { text: ctx, score, hits } = await makeContext(text, { k: 3 });
-console.log("RAG score:", score, "hit:", hits[0]?.id);
+    // تطابق عالي → رد مباشر من الـKB
+    if (score >= DIRECT_ANSWER && hits[0]) {
+      const firstLine = hits[0].text.split("\n")[0].trim();
+      await sendWhatsAppText(from, firstLine);
+      return;
+    }
 
-// 1) تطابق عالي → رد مباشر من أول مقطع (مختصر)
-if (score >= DIRECT_ANSWER && hits[0]) {
-  const firstLine = hits[0].text.split("\n")[0].trim();
-  await sendWhatsAppText(from, firstLine);
-  return;
-}
+    // تطابق متوسط → مرّر سياق للـLLM
+    if (score >= CONTEXT_RANGE) {
+      const aiReply = await askAI(text, {
+        history: hist,
+        dialect: "syrian",
+        context: ctx,
+      });
+      await sendWhatsAppText(from, aiReply);
+      convo.set(
+        from,
+        [
+          ...hist,
+          { role: "user", content: text },
+          { role: "assistant", content: aiReply },
+        ].slice(-8)
+      );
+      return;
+    }
+  } catch (e) {
+    console.error("RAG error:", e?.response?.data || e.message);
+    // نكمل للفولباك
+  }
 
-// 2) تطابق متوسط → مرّر السياق للـLLM
-if (score >= CONTEXT_RANGE) {
-  const aiReply = await askAI(text, {
-    history: hist,
-    dialect: "syrian",
-    context: ctx,
-  });
-  await sendWhatsAppText(from, aiReply);
-  convo.set(
+  // 3) تطابق ضعيف → سؤال توضيحي (أسرع وأدق من تخمين LLM)
+  await sendWhatsAppText(
     from,
-    [
-      ...hist,
-      { role: "user", content: text },
-      { role: "assistant", content: aiReply },
-    ].slice(-8)
+    "حدّدلي اللعبة/المنصّة أو المبلغ مشان جاوبك بدقّة 👍"
   );
   return;
 }
 
-// 3) تطابق ضعيف → سؤال توضيحي بدل التخمين
-await sendWhatsAppText(
-  from,
-  "حدّدلي اللعبة/المنصّة أو المبلغ مشان جاوبك بدقّة 👍"
-);
-return;
 // استقبال (POST) — نُعيد 200 فورًا، ونُكمل بالخلفية
 app.post("/webhook", (req, res) => {
   try {
     const entry = req.body?.entry?.[0]?.changes?.[0]?.value;
     const msg = entry?.messages?.[0];
 
-    res.status(200).json({ status: "ok" }); // مهم حتى ما يعيد واتساب المحاولة
+    // مهم: 200 فورًا حتى ما يعيد واتساب المحاولة
+    res.status(200).json({ status: "ok" });
 
     if (!msg || msg.type !== "text") return;
-
-    // لا تعالج نفس الرسالة مرتين
-    if (seen.has(msg.id)) return;
+    if (seen.has(msg.id)) return; // لا تعالج نفس الرسالة مرتين
     remember(msg.id);
 
+    const from = msg.from;
+    const text = msg.text?.body || "";
+
     setImmediate(() =>
-      handleMessage(msg.from, msg.text?.body || "").catch((e) =>
+      handleMessage(from, text).catch((e) =>
         console.error("Handle error:", e?.response?.data || e.message)
       )
     );
