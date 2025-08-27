@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 
-const KB_DIR = path.join(__dirname, "..", "data", "kb");
+const KB_DIR = path.join(__dirname, "..", "data", "docs");
 const INDEX_OUT = path.join(__dirname, "..", "data", "index.json");
 const OLLAMA_EMB_URL =
   process.env.OLLAMA_EMB_URL || "http://127.0.0.1:11434/api/embeddings";

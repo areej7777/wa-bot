@@ -6,7 +6,7 @@ const axios = require("axios");
 
 // مسارات الملفات
 const KB_PATH = path.join(__dirname, "../data/kb.js");
-const OUT_PATH = path.join(__dirname, "../data/kb.index.json");
+const OUT_PATH = path.join(__dirname, "../data/index.json");
 
 // إعدادات Ollama Embeddings
 const OLLAMA_EMBED =

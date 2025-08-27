@@ -15,7 +15,7 @@ function buildSystemPrompt({ dialect = "syrian", context = "" } = {}) {
     "القواعد:",
     `1) لا تختلق معلومات/روابط. للرابط أعطِ هذا فقط: ${SITE_URL}`,
     "2) لشحن/سحب اسأل عن: المبلغ،  معرّف الحساب، وطريقة الدفع/الاستلام.",
-    "3) استخدم العربية/اللهجة السورية فقط.",
+    "3) استخدم العربية/اللهجة السورية الشامية فقط.",
     context ? `معلومات سياقية:\n${context}` : "",
   ]
     .filter(Boolean)
@@ -31,7 +31,6 @@ async function askAI(
   const messages = [
     { role: "system", content: system },
 
-    // Few-shot صغيرة لتثبيت السلوك (يمكن حذفها إن رغبت)
     { role: "user", content: "بدي الرابط" },
     { role: "assistant", content: `رابط موقعنا: ${SITE_URL}` },
     { role: "user", content: "بدي اشحن 100 سيريتيل كاش " },

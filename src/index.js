@@ -73,22 +73,19 @@ async function handleMessage(from, text) {
   if (intent === "topup") {
     const amount = extractAmount(text);
     if (!amount) {
-      await sendWhatsAppText(
-        from,
-        "قدّيش المبلغ/الكميّة؟ واذكر اللعبة/المنصّة ومعرّف الحساب."
-      );
+      await sendWhatsAppText(from, "قدّيش المبلغ؟.");
       return;
     }
     await sendWhatsAppText(
       from,
-      `تمام! سجّلت ${amount}. خبرني اللعبة/المنصّة ومعرّف الحساب وطريقة الدفع.`
+      `تمام! سجّلت ${amount}.  خبرني طريقة الدفع. ورقم العملية`
     );
     return;
   }
   if (intent === "withdraw") {
     await sendWhatsAppText(
       from,
-      "للسحب: ابعت قيمة السحب، المنصّة، وطريقة الاستلام (محفظة/تحويل...)."
+      "للسحب: ابعت قيمة السحب،  وطريقة الاستلام (محفظة/تحويل...)."
     );
     return;
   }

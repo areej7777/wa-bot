@@ -1,13 +1,30 @@
 // src/services/rag.js
+require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 
-const INDEX_PATH = path.join(__dirname, "../data/kb.index.json");
-const INDEX = fs.existsSync(INDEX_PATH)
+// المسار الصحيح للفهرس من داخل src/services/ إلى data/index.json
+const INDEX_PATH = path.resolve(__dirname, "..", "..", "data", "index.json");
+
+// حمّل الفهرس الخام (قد يكون {file,text,vec} أو {title,text,emb} أو {text,embedding}..)
+const RAW_INDEX = fs.existsSync(INDEX_PATH)
   ? JSON.parse(fs.readFileSync(INDEX_PATH, "utf8"))
   : [];
 
+// طَبِّع البنية إلى شكل موحّد داخليًا: { id, source, title, text, emb }
+const INDEX = (Array.isArray(RAW_INDEX) ? RAW_INDEX : [])
+  .map((it, i) => {
+    const id = it.id || `${it.file || it.title || "chunk"}#${i}`;
+    const title = it.title || it.file || "untitled";
+    const text = it.text || it.content || "";
+    const emb = it.emb || it.vec || it.embedding || null; // دعم vec/emb/embedding
+    const source = it.source || it.file || title;
+    return { id, source, title, text, emb };
+  })
+  .filter((it) => Array.isArray(it.emb) && it.emb.length && it.text);
+
+// إعدادات خدمة الـ Embeddings
 const OLLAMA_EMBED =
   process.env.OLLAMA_EMBED || "http://127.0.0.1:11434/api/embeddings";
 const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
@@ -30,21 +47,31 @@ function normalizeDigits(s) {
 }
 
 async function embed(q) {
-  const r = await axios.post(OLLAMA_EMBED, {
-    model: EMBED_MODEL,
-    prompt: normalizeDigits(q),
-  });
-  return r.data?.embedding;
+  const r = await axios.post(
+    OLLAMA_EMBED,
+    {
+      model: EMBED_MODEL,
+      prompt: normalizeDigits(q),
+    },
+    { timeout: 30_000 }
+  );
+  return r.data?.embedding || r.data?.data?.[0]?.embedding || null;
 }
 
+// cosine محمية ضد الحالات الشاذة وطول المتجهات المختلف
 function cosine(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || !a.length || !b.length)
+    return -1;
+  const n = Math.min(a.length, b.length);
   let dot = 0,
     na = 0,
     nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
+  for (let i = 0; i < n; i++) {
+    const ai = a[i],
+      bi = b[i];
+    dot += ai * bi;
+    na += ai * ai;
+    nb += bi * bi;
   }
   return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-9);
 }
@@ -52,6 +79,7 @@ function cosine(a, b) {
 async function retrieve(query, k = 3) {
   if (!INDEX.length) return [];
   const q = await embed(query);
+  if (!Array.isArray(q) || !q.length) return [];
   return INDEX.map((it) => ({ ...it, score: cosine(q, it.emb) }))
     .sort((x, y) => y.score - x.score)
     .slice(0, k);
