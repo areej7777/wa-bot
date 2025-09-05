@@ -1,7 +1,7 @@
 // src/services/whatsapp.js
 const axios = require("axios");
 
-const API_BASE = "https://graph.facebook.com/v2.0";
+const API_BASE = "https://graph.facebook.com/v20.0";
 
 const TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;

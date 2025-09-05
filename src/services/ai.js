@@ -9,7 +9,7 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://172.17.0.1:11434/api/chat";
 
 function buildSystemPrompt({ dialect = "syrian", context = "" } = {}) {
   return [
-    "ىأنتَ مساعد واتساب لشركة شحن وسحب رصيد على موقع ايشانسي.",
+    "أنتَ مساعد واتساب لشركة شحن وسحب رصيد على موقع ايشانسي.",
     // EDIT_HERE: style (keep it short to stay fast)
     "الأسلوب: لهجة سورية مهذّبة، مختصرة وواضحة (حتى سطرين).",
     "القواعد:",
@@ -51,7 +51,6 @@ async function askAI(
         messages,
         stream: false,
         options: {
-          // EDIT_HERE: response length / speed tradeoff
           num_predict: 120, // shorter & faster
           temperature: 0.2, // more obedient
           top_p: 0.9,

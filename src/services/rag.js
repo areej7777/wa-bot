@@ -1,18 +1,14 @@
-// src/services/rag.js
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 
-// المسار الصحيح للفهرس من داخل src/services/ إلى data/index.json
 const INDEX_PATH = path.resolve(__dirname, "..", "..", "data", "index.json");
 
-// حمّل الفهرس الخام (قد يكون {file,text,vec} أو {title,text,emb} أو {text,embedding}..)
 const RAW_INDEX = fs.existsSync(INDEX_PATH)
   ? JSON.parse(fs.readFileSync(INDEX_PATH, "utf8"))
   : [];
 
-// طَبِّع البنية إلى شكل موحّد داخليًا: { id, source, title, text, emb }
 const INDEX = (Array.isArray(RAW_INDEX) ? RAW_INDEX : [])
   .map((it, i) => {
     const id = it.id || `${it.file || it.title || "chunk"}#${i}`;
@@ -24,12 +20,10 @@ const INDEX = (Array.isArray(RAW_INDEX) ? RAW_INDEX : [])
   })
   .filter((it) => Array.isArray(it.emb) && it.emb.length && it.text);
 
-// إعدادات خدمة الـ Embeddings
-const OLLAMA_EMBED =
-  process.env.OLLAMA_EMBED || "http://127.0.0.1:11434/api/embeddings";
+const OLLAMA_EMBED_URL =
+  process.env.OLLAMA_EMBED_URL || "http://127.0.0.1:11434/api/embeddings";
 const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
 
-// نفس التطبيع للأرقام
 function normalizeDigits(s) {
   const map = {
     "٠": "0",
@@ -48,7 +42,7 @@ function normalizeDigits(s) {
 
 async function embed(q) {
   const r = await axios.post(
-    OLLAMA_EMBED,
+    OLLAMA_EMBED_URL,
     {
       model: EMBED_MODEL,
       prompt: normalizeDigits(q),
@@ -58,7 +52,6 @@ async function embed(q) {
   return r.data?.embedding || r.data?.data?.[0]?.embedding || null;
 }
 
-// cosine محمية ضد الحالات الشاذة وطول المتجهات المختلف
 function cosine(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || !a.length || !b.length)
     return -1;
