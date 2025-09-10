@@ -4,6 +4,227 @@ const express = require("express");
 const { askAI } = require("./services/ai");
 const { sendWhatsAppText } = require("./services/whatsapp");
 const { makeContext } = require("./services/rag");
+
+const DIRECT_ANSWER = 0.85;
+const CONTEXT_RANGE = 0.65;
+
+const app = express();
+app.use(express.json({ limit: "1mb" }));
+
+// صحّة
+app.get("/", (_, res) => res.status(200).send("ok"));
+
+// ذاكرة قصيرة + تفادي تكرار
+const convo = new Map(); // phone -> [{role,content}...]
+const seen = new Map(); // msg.id -> time
+function remember(id) {
+  const now = Date.now();
+  seen.set(id, now);
+  for (const [k, t] of seen) if (now - t > 15 * 60 * 1000) seen.delete(k);
+}
+
+// تدفّق إنشاء الحساب فقط
+const flow = new Map(); // phone -> { step: "await_username"|"await_password", name? }
+
+// قواعد اسم اللاعب
+const USERNAME_RE = /^[A-Za-z0-9]{3,20}$/;
+function sanitizeName(s) {
+  return (s || "").trim().replace(/\s+/g, "");
+}
+function isValidUsername(s) {
+  return USERNAME_RE.test(sanitizeName(s));
+}
+
+// الموقع (من ENV)
+const SITE_URL = process.env.SITE_URL || "https://www.ichancy.com/";
+
+// نيّات بسيطة
+function routeIntent(txt) {
+  const t = (txt || "").normalize("NFKC").toLowerCase();
+  if (/(رابط|لينك|website|site|موقع)/i.test(t)) return "link";
+  if (
+    /(إنشاء|انشاء|تسجيل|سجل|اعمل|عمل|create|register|sign ?up)/i.test(t) &&
+    /(حساب|account)/i.test(t) &&
+    /(ايشانسي|ichancy)?/i.test(t)
+  ) {
+    return "signup";
+  }
+  if (/(سحب|اسحب|withdraw)/i.test(t)) return "withdraw";
+  if (/(سعر|اسعار|باقات|العروض)/i.test(t)) return "pricing";
+  return null;
+}
+
+// Webhook verification (GET)
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+  return res.sendStatus(403);
+});
+
+// بدء تدفّق التسجيل
+async function beginSignup(from) {
+  flow.set(from, { step: "await_username" });
+  await sendWhatsAppText(
+    from,
+    "تمام—خلّينا ننشئ حسابك على ايشانسي.\nاكتب اسم اللاعب المطلوب (A-Z و 0-9 فقط، 3–20 حرف، بدون مسافات)."
+  );
+}
+
+// معالجة رسالة واحدة
+async function handleMessage(from, text) {
+  const hist = convo.get(from) || [];
+
+  // ====== تدفّق إنشاء الحساب ======
+  const f = flow.get(from);
+
+  if (f?.step === "await_username") {
+    if (!isValidUsername(text)) {
+      await sendWhatsAppText(
+        from,
+        "اكتب اسم اللاعب المطلوب (أحرف لاتينية A-Z وأرقام فقط، 3–20 حرف، بدون مسافات)."
+      );
+      return;
+    }
+    f.name = sanitizeName(text);
+    f.step = "await_password";
+    flow.set(from, f);
+    await sendWhatsAppText(
+      from,
+      "تمام! اكتب كلمة السر اللي بدك تعتمدها للحساب."
+    );
+    return;
+  }
+
+  if (f?.step === "await_password") {
+    const password = (text || "").trim();
+    if (!password) {
+      await sendWhatsAppText(from, "اكتب كلمة سر صالحة.");
+      return;
+    }
+    const name = f.name;
+    flow.delete(from);
+    // ملاحظة: هون فيك تنادي API فعلي لإنشاء الحساب إذا حابب.
+    await sendWhatsAppText(
+      from,
+      `تمام—سجّلنا البيانات:\nالاسم: ${name}\nكلمة السر: تم استلامها.`
+    );
+    return;
+  }
+
+  // ====== نيّات فورية ======
+  const intent = routeIntent(text);
+
+  if (intent === "signup") {
+    await beginSignup(from);
+    return;
+  }
+
+  if (intent === "link") {
+    await sendWhatsAppText(from, `رابط موقعنا: ${SITE_URL}`);
+    convo.set(
+      from,
+      [
+        ...hist,
+        { role: "user", content: text },
+        { role: "assistant", content: `رابط موقعنا: ${SITE_URL}` },
+      ].slice(-8)
+    );
+    return;
+  }
+
+  if (intent === "withdraw") {
+    await sendWhatsAppText(
+      from,
+      "للسحب: ابعت قيمة السحب، وطريقة الاستلام (محفظة/تحويل/بنك). التنفيذ عادة 5–30 دقيقة."
+    );
+    return;
+  }
+
+  if (intent === "pricing") {
+    await sendWhatsAppText(
+      from,
+      "الأسعار بتختلف حسب اللعبة والطريقة. اذكر اللعبة/الباقة المطلوبة وبعطيك السعر."
+    );
+    return;
+  }
+
+  // ====== RAG ======
+  try {
+    const { text: ctx, score, hits } = await makeContext(text, { k: 3 });
+    console.log("RAG score:", score, "hit:", hits[0]?.id);
+
+    if (score >= DIRECT_ANSWER && hits[0]) {
+      const firstLine = hits[0].text.split("\n")[0].trim();
+      await sendWhatsAppText(from, firstLine);
+      return;
+    }
+
+    if (score >= CONTEXT_RANGE) {
+      const aiReply = await askAI(text, {
+        history: hist,
+        dialect: "syrian",
+        context: ctx,
+      });
+      await sendWhatsAppText(from, aiReply);
+      convo.set(
+        from,
+        [
+          ...hist,
+          { role: "user", content: text },
+          { role: "assistant", content: aiReply },
+        ].slice(-8)
+      );
+      return;
+    }
+  } catch (e) {
+    console.error("RAG error:", e?.response?.data || e.message);
+  }
+
+  // ====== Fallback ======
+  await sendWhatsAppText(from, "كيف بقدر ساعدك ياملك");
+  return;
+}
+
+// استقبال (POST) — نعيد 200 فورًا ونكمل بالخلفية
+app.post("/webhook", (req, res) => {
+  try {
+    const entry = req.body?.entry?.[0]?.changes?.[0]?.value;
+    const msg = entry?.messages?.[0];
+
+    res.status(200).json({ status: "ok" });
+
+    if (!msg || msg.type !== "text") return;
+    if (seen.has(msg.id)) return;
+    remember(msg.id);
+
+    const from = msg.from;
+    const text = msg.text?.body || "";
+
+    setImmediate(() =>
+      handleMessage(from, text).catch((e) =>
+        console.error("Handle error:", e?.response?.data || e.message)
+      )
+    );
+  } catch (e) {
+    console.error("Webhook error:", e?.response?.data || e.message);
+  }
+});
+
+const PORT = Number(process.env.PORT || 3000);
+app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Bot listening on ${PORT}`));
+
+// src/index.js
+{
+  /**
+require("dotenv").config();
+const express = require("express");
+const { askAI } = require("./services/ai");
+const { sendWhatsAppText } = require("./services/whatsapp");
+const { makeContext } = require("./services/rag");
 const axios = require("axios");
 
 const DIRECT_ANSWER = 0.85;
@@ -469,3 +690,5 @@ app.post("/webhook", (req, res) => {
 
 const PORT = Number(process.env.PORT || 3000);
 app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Bot listening on ${PORT}`));
+ */
+}
