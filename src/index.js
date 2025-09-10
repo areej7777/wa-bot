@@ -37,7 +37,7 @@ const SITE_URL = process.env.SITE_URL || "https://www.ichancy.com/";
 const TOPUP_WEBHOOK_URL = process.env.TOPUP_WEBHOOK_URL || "";
 const TOPUP_WEBHOOK_SECRET = process.env.TOPUP_WEBHOOK_SECRET || "";
 const MIN_TOPUP = Number(process.env.MIN_TOPUP || 10000);
-
+beginSignup;
 const METHODS = {
   syriatel: {
     label: "سيريتيل كاش",
@@ -168,9 +168,9 @@ async function applyTopupToAccount({ phone, amount, ref, txid, method }) {
   }
 }
 
-function beginSignup(from, after) {
+async function beginSignup(from, after) {
   flow.set(from, { step: "await_username", after });
-  return sendWhatsAppText(
+  await sendWhatsAppText(
     from,
     "تمام—خلّينا ننشئ حسابك على ايشانسي.\nاكتب اسم اللاعب المطلوب (أحرف لاتينية A-Z وأرقام فقط، 3–20 حرف، بدون مسافات)."
   );
