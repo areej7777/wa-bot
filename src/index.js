@@ -37,7 +37,7 @@ const SITE_URL = process.env.SITE_URL || "https://www.ichancy.com/";
 const TOPUP_WEBHOOK_URL = process.env.TOPUP_WEBHOOK_URL || "";
 const TOPUP_WEBHOOK_SECRET = process.env.TOPUP_WEBHOOK_SECRET || "";
 const MIN_TOPUP = Number(process.env.MIN_TOPUP || 10000);
-beginSignup;
+
 const METHODS = {
   syriatel: {
     label: "سيريتيل كاش",
@@ -175,10 +175,11 @@ async function beginSignup(from, after) {
     "تمام—خلّينا ننشئ حسابك على ايشانسي.\nاكتب اسم اللاعب المطلوب (أحرف لاتينية A-Z وأرقام فقط، 3–20 حرف، بدون مسافات)."
   );
 }
-
 // معالجة رسالة واحدة
 async function handleMessage(from, text) {
   const hist = convo.get(from) || [];
+
+  // ====== تدفق الشحن ======
   const tf = topupFlow.get(from);
   if (tf?.step === "ask_method") {
     const method = normalizeMethod(text);
@@ -194,6 +195,7 @@ async function handleMessage(from, text) {
     );
     return;
   }
+
   if (tf?.step === "ask_amount") {
     const amt = extractAmount(normalizeDigits(text));
     if (!amt || amt < MIN_TOPUP) {
@@ -225,6 +227,7 @@ async function handleMessage(from, text) {
     );
     return;
   }
+
   if (tf?.step === "ask_txid") {
     const txid = (text || "").trim();
     if (!txid) {
@@ -241,8 +244,10 @@ async function handleMessage(from, text) {
       txid,
       ts: new Date().toISOString(),
     };
+
     const submit = await submitTopup(payload);
     topupFlow.delete(from);
+
     if (!submit?.ok) {
       await sendWhatsAppText(
         from,
@@ -251,6 +256,7 @@ async function handleMessage(from, text) {
       return;
     }
 
+    // فحص حساب ايشانسي
     const has = await hasIchancyAccount(from);
     if (has === true) {
       const apply = await applyTopupToAccount({
@@ -273,6 +279,7 @@ async function handleMessage(from, text) {
       }
       return;
     }
+
     if (has === false) {
       await sendWhatsAppText(
         from,
@@ -280,17 +287,22 @@ async function handleMessage(from, text) {
       );
       await beginSignup(from, {
         kind: "apply_topup_after_signup",
-        data: { ref, txid, amount: tf.amount, method },
+        data: { ref, txid, amount: tf.amount, method: tf.method }, // ← انتبه tf.method
       });
+      return; // مهم: ما نكمل للرسائل اللي بعد
     }
+
+    // has === null
     await sendWhatsAppText(
       from,
       `تسجّلت العملية (${ref}). إذا ما عندك حساب ايشانسي، فيك تكتب: تسجيل حساب — ومنطبّق الرصيد بعد الإنشاء.`
     );
     return;
   }
-  ("");
+
+  // ====== تدفّق التسجيل ======
   const f = flow.get(from);
+
   if (f?.step === "await_username") {
     if (!isValidUsername(text)) {
       await sendWhatsAppText(
@@ -308,20 +320,22 @@ async function handleMessage(from, text) {
     );
     return;
   }
+
   if (f?.step === "await_password") {
-    // ملاحظات أمان: لا نطبع/نلوّغ كلمة السر أبداً
     const password = (text || "").trim();
     if (!password) {
       await sendWhatsAppText(from, "اكتب كلمة سر صالحة.");
       return;
     }
-    // هون بتعمل الإنشاء الحقيقي لو عندك API؛ حالياً منكتفي بتأكيد الاستلام
     const name = f.name;
-    flow.delete(from); // خلّص التدفّق
+    const after = f.after; // ← كان ناقص
+    flow.delete(from);
+
     await sendWhatsAppText(
       from,
       `تمام—سجّلنا البيانات:\nالاسم: ${name}\nكلمة السر: تم استلامها.`
     );
+
     if (after?.kind === "apply_topup_after_signup") {
       const { ref, txid, amount, method } = after.data || {};
       const apply = await applyTopupToAccount({
@@ -344,83 +358,88 @@ async function handleMessage(from, text) {
       }
       return;
     }
-    return;
-  }
-}
-// 1) نيّات فورية
-const intent = routeIntent(text);
-if (intent === "signup") {
-  // ابدأ التدفّق
-  flow.set(from, { step: "await_username" });
-  await sendWhatsAppText(
-    from,
-    "تمام—خلّينا ننشئ حسابك على ايشانسي.\nاكتب اسم اللاعب المطلوب (أحرف لاتينية A-Z وأرقام فقط، 3–20 حرف، بدون مسافات)."
-  );
-  return;
-}
-if (intent === "link") {
-  await sendWhatsAppText(from, `رابط موقعنا: ${SITE_URL}`);
-  convo.set(
-    from,
-    [
-      ...hist,
-      { role: "user", content: text },
-      { role: "assistant", content: `رابط موقعنا: ${SITE_URL}` },
-    ].slice(-8)
-  );
-  return;
-}
-if (intent === "topup") {
-  topupFlow.set(from, { step: "ask_method" });
-  await sendWhatsAppText(from, "تمام—بدنا طريقة الدفع أولاً. " + listMethods());
-  return;
-}
 
-if (intent === "withdraw") {
-  await sendWhatsAppText(
-    from,
-    "للسحب: ابعت قيمة السحب،  وطريقة الاستلام (محفظة/تحويل...)."
-  );
-  return;
-}
-
-// 2) RAG — القرار حسب الدرجة (هنا كان الخطأ عندك؛ لازم يكون داخل دالة async)
-try {
-  const { text: ctx, score, hits } = await makeContext(text, { k: 3 });
-  console.log("RAG score:", score, "hit:", hits[0]?.id);
-  // تطابق عالي → رد مباشر من الـKB
-  if (score >= DIRECT_ANSWER && hits[0]) {
-    const firstLine = hits[0].text.split("\n")[0].trim();
-    await sendWhatsAppText(from, firstLine);
     return;
   }
 
-  // تطابق متوسط → مرّر سياق للـLLM
-  if (score >= CONTEXT_RANGE) {
-    const aiReply = await askAI(text, {
-      history: hist,
-      dialect: "syrian",
-      context: ctx,
-    });
-    await sendWhatsAppText(from, aiReply);
+  // ====== نيّات فورية ======
+  const intent = routeIntent(text);
+
+  if (intent === "signup") {
+    flow.set(from, { step: "await_username" });
+    await sendWhatsAppText(
+      from,
+      "تمام—خلّينا ننشئ حسابك على ايشانسي.\nاكتب اسم اللاعب المطلوب (أحرف لاتينية A-Z وأرقام فقط، 3–20 حرف، بدون مسافات)."
+    );
+    return;
+  }
+
+  if (intent === "link") {
+    await sendWhatsAppText(from, `رابط موقعنا: ${SITE_URL}`);
     convo.set(
       from,
       [
         ...hist,
         { role: "user", content: text },
-        { role: "assistant", content: aiReply },
+        { role: "assistant", content: `رابط موقعنا: ${SITE_URL}` },
       ].slice(-8)
     );
     return;
   }
-} catch (e) {
-  console.error("RAG error:", e?.response?.data || e.message);
-  // نكمل للفولباك
-}
 
-// 3) تطابق ضعيف → سؤال توضيحي (أسرع وأدق من تخمين LLM)
-await sendWhatsAppText(from, "كيف بقدر ساعدك ياملك");
-return;
+  if (intent === "topup") {
+    topupFlow.set(from, { step: "ask_method" });
+    await sendWhatsAppText(
+      from,
+      "تمام—بدنا طريقة الدفع أولاً. " + listMethods()
+    );
+    return;
+  }
+
+  if (intent === "withdraw") {
+    await sendWhatsAppText(
+      from,
+      "للسحب: ابعت قيمة السحب،  وطريقة الاستلام (محفظة/تحويل...)."
+    );
+    return;
+  }
+
+  // ====== RAG ======
+  try {
+    const { text: ctx, score, hits } = await makeContext(text, { k: 3 });
+    console.log("RAG score:", score, "hit:", hits[0]?.id);
+
+    if (score >= DIRECT_ANSWER && hits[0]) {
+      const firstLine = hits[0].text.split("\n")[0].trim();
+      await sendWhatsAppText(from, firstLine);
+      return;
+    }
+
+    if (score >= CONTEXT_RANGE) {
+      const aiReply = await askAI(text, {
+        history: hist,
+        dialect: "syrian",
+        context: ctx,
+      });
+      await sendWhatsAppText(from, aiReply);
+      convo.set(
+        from,
+        [
+          ...hist,
+          { role: "user", content: text },
+          { role: "assistant", content: aiReply },
+        ].slice(-8)
+      );
+      return;
+    }
+  } catch (e) {
+    console.error("RAG error:", e?.response?.data || e.message);
+  }
+
+  // ====== Fallback ======
+  await sendWhatsAppText(from, "كيف بقدر ساعدك ياملك");
+  return;
+}
 
 // استقبال (POST) — نُعيد 200 فورًا، ونُكمل بالخلفية
 app.post("/webhook", (req, res) => {
