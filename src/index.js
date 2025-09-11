@@ -73,7 +73,22 @@ async function beginSignup(from) {
     "تمام—خلّينا ننشئ حسابك على ايشانسي.\nاكتب اسم اللاعب المطلوب (A-Z و 0-9 فقط، 3–20 حرف، بدون مسافات)."
   );
 }
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
+function isPureGreeting(txt) {
+  const t = (txt || "").normalize("NFKC").toLowerCase().trim();
+
+  const hasIntentWords =
+    /(شحن|top ?up|سحب|withdraw|رابط|لينك|website|site|حساب|account|تسجيل|register|sign ?up|سعر|اسعار|باقات|عرض)/i.test(
+      t
+    );
+  if (hasIntentWords) return false;
+  return /(مرحبا|أهلا|اهلا|هلا|السلام عليكم|صباح الخير|مساء الخير|يسعد صباحك|يسعد مساك|شلونك|كيفك|كيف الحال|شو الأخبار|هاي|hello|hi|hey)/i.test(
+    t
+  );
+}
 // معالجة رسالة واحدة
 async function handleMessage(from, text) {
   const hist = convo.get(from) || [];
@@ -148,6 +163,18 @@ async function handleMessage(from, text) {
     await sendWhatsAppText(
       from,
       "الأسعار بتختلف حسب اللعبة والطريقة. اذكر اللعبة/الباقة المطلوبة وبعطيك السعر."
+    );
+    return;
+  }
+
+  if (isPureGreeting(text)) {
+    await sendWhatsAppText(
+      from,
+      pick([
+        "أهلين وسهلين يا ملك 👋 كيف فيني أخدمك؟",
+        "يا هلا فيك! خبرني شو بدّك أساعدك فيه.",
+        "أهلا بالغالي، كيف بقدر أخدمك؟",
+      ])
     );
     return;
   }
