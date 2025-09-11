@@ -80,11 +80,14 @@ function pick(arr) {
 function isPureGreeting(txt) {
   const t = (txt || "").normalize("NFKC").toLowerCase().trim();
 
+  // كلمات تدل على وجود طلب فعلي
   const hasIntentWords =
     /(شحن|top ?up|سحب|withdraw|رابط|لينك|website|site|حساب|account|تسجيل|register|sign ?up|سعر|اسعار|باقات|عرض)/i.test(
       t
     );
   if (hasIntentWords) return false;
+
+  // عبارات التحية/السوالف
   return /(مرحبا|أهلا|اهلا|هلا|السلام عليكم|صباح الخير|مساء الخير|يسعد صباحك|يسعد مساك|شلونك|كيفك|كيف الحال|شو الأخبار|هاي|hello|hi|hey)/i.test(
     t
   );
