@@ -78,7 +78,7 @@ function pick(arr) {
 }
 
 function isThanksOrCompliment(txt) {
-  const t = (txt || "").normalize("NFKC").loLowerCase();
+  const t = (txt || "").normalize("NFKC").toLowerCase();
   return (
     /(?:شكرا|شكراً|مشكور|ممنون|يسلمو|يعطيك العافية|تسلم|الله يخليك|❤|❤️|🙏|thanks|thank you|thx)/i.test(
       t
@@ -87,7 +87,7 @@ function isThanksOrCompliment(txt) {
 }
 function isRudeOrAbusive(txt) {
   const t = (txt || "").normalize("NFKC").toLowerCase();
-  return /(?:قليل ادب|قلة ادب|سب|شتم|انقلع|انقلعي|غبي|تافه|قرف|وسخ|fuck|shit|idiot|stupid|asshole)/i.test(
+  return /(?:قليل ادب|قلة ادب|سب|شتم|انقلع|انقلعي|خرا عليك|غبي|تافه|قرف|وسخ|fuck|shit|idiot|stupid|asshole)/i.test(
     t
   );
 }
