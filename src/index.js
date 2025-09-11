@@ -77,6 +77,33 @@ function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function isThanksOrCompliment(txt) {
+  const t = (txt || "").normalize("NFKC").loLowerCase();
+  return (
+    /(?:شكرا|شكراً|مشكور|ممنون|يسلمو|يعطيك العافية|تسلم|الله يخليك|❤|❤️|🙏|thanks|thank you|thx)/i.test(
+      t
+    ) || /(?:حبيب|غالي|ملك|اسطورة|اسطوره|عيونك|ذهبي)/i.test(t)
+  );
+}
+
+const THANKS_REPLIES = [
+  "تكرم عينك 🙏 أي خدمة تانية؟",
+  "العفو يا غالي—تحت أمرك بأي وقت.",
+  "شكرًا إلك، إذا بدك شي خبرني.",
+];
+
+const NICE_REPLIES = [
+  "تسلم—وجودك الأجمل 🌟 كيف فيني أخدمك؟",
+  "يعطيك العافية، جاهز لأي طلب.",
+  "أهلين فيك يا ملك، شو بتحب نبلّش فيه؟",
+];
+
+const RUDE_BOUNDARY = [
+  "خلّينا نكمّل بأدب لو سمحت 🙏 وأنا جاهز أساعدك.",
+  "بتمنى نحافظ على الاحترام، وأنا بخدمتك.",
+  "منكسب بعض بالكلمة الطيبة—شو طلبك؟",
+];
+
 function isPureGreeting(txt) {
   const t = (txt || "").normalize("NFKC").toLowerCase().trim();
 
@@ -135,7 +162,11 @@ async function handleMessage(from, text) {
 
   // ====== نيّات فورية ======
   const intent = routeIntent(text);
-
+  const rude = isRudeOrAbusive(text);
+  if (rude) {
+    // رسالة حدود قصيرة ونكمل المعالجة (ما منعمل return)
+    await sendWhatsAppText(from, pick(RUDE_BOUNDARY));
+  }
   if (intent === "signup") {
     await beginSignup(from);
     return;
@@ -181,7 +212,16 @@ async function handleMessage(from, text) {
     );
     return;
   }
+  if (!f?.step && !intent && isThanksOrCompliment(text)) {
+    await sendWhatsAppText(from, pick([...THANKS_REPLIES, ...NICE_REPLIES]));
+    return;
+  }
 
+  // إساءة بدون طلب
+  if (!f?.step && !intent && isRudeOrAbusive(text)) {
+    await sendWhatsAppText(from, pick(RUDE_BOUNDARY));
+    return;
+  }
   // ====== RAG ======
   try {
     const { text: ctx, score, hits } = await makeContext(text, { k: 3 });
