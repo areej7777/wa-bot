@@ -85,6 +85,12 @@ function isThanksOrCompliment(txt) {
     ) || /(?:حبيب|غالي|ملك|اسطورة|اسطوره|عيونك|ذهبي)/i.test(t)
   );
 }
+function isRudeOrAbusive(txt) {
+  const t = (txt || "").normalize("NFKC").toLowerCase();
+  return /(?:قليل ادب|قلة ادب|سب|شتم|انقلع|انقلعي|غبي|تافه|قرف|وسخ|fuck|shit|idiot|stupid|asshole)/i.test(
+    t
+  );
+}
 
 const THANKS_REPLIES = [
   "تكرم عينك 🙏 أي خدمة تانية؟",
@@ -119,6 +125,7 @@ function isPureGreeting(txt) {
     t
   );
 }
+
 // معالجة رسالة واحدة
 async function handleMessage(from, text) {
   const hist = convo.get(from) || [];
