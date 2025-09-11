@@ -11,9 +11,8 @@ const axios = require("axios");
 const KB_PATH = path.join(__dirname, "../data/kb.js");
 const OUT_PATH = path.join(__dirname, "../data/index.json");
 
-// إعدادات Ollama Embeddings
 const OLLAMA_EMBED_URL =
-  process.env.OLLAMA_EMBED_URL || "http://127.0.0.1:11434/api/embeddings";
+  process.env.OLLAMA_EMBED_URL || "http://172.17.0.1:11434/api/embeddings";
 const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
 
 // تطبيع الأرقام العربية -> لاتينية (يحسّن التطابق)

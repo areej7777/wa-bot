@@ -21,7 +21,8 @@ const INDEX = (Array.isArray(RAW_INDEX) ? RAW_INDEX : [])
   .filter((it) => Array.isArray(it.emb) && it.emb.length && it.text);
 
 const OLLAMA_EMBED_URL =
-  process.env.OLLAMA_EMBED_URL || "http://127.0.0.1:11434/api/embeddings";
+  process.env.OLLAMA_EMBED_URL || "http://172.17.0.1:11434/api/embeddings";
+
 const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
 
 function normalizeDigits(s) {
