@@ -3,9 +3,11 @@ const axios = require("axios");
 
 const SITE_URL = process.env.SITE_URL || "https://www.ichancy.com/";
 
-const AI_MODEL = process.env.AI_MODEL || "qwen2.5:7b-instruct";
+const AI_MODEL = process.env.AI_MODEL || "qwen2.5:3b-instruct";
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://172.17.0.1:11434/api/chat";
+const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 90000);
+const AI_MAX_TOKENS = Number(process.env.AI_MAX_TOKENS || 120);
 
 function buildSystemPrompt({ dialect = "syrian", context = "" } = {}) {
   return [
@@ -51,15 +53,15 @@ async function askAI(
         messages,
         stream: false,
         options: {
-          num_predict: 120, // shorter & faster
-          temperature: 0.2, // more obedient
+          num_predict: AI_MAX_TOKENS,
+          temperature: 0.2,
           top_p: 0.9,
           top_k: 40,
           repeat_penalty: 1.1,
           num_ctx: 2048,
         },
       },
-      { timeout: 30000 }
+      { timeout: AI_TIMEOUT_MS } // ← بدل 30000
     );
 
     return (
