@@ -6,8 +6,7 @@ const SITE_URL = process.env.SITE_URL || "https://www.ichancy.com/";
 const AI_MODEL = process.env.AI_MODEL || "qwen2.5:3b-instruct";
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://172.17.0.1:11434/api/chat";
-const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 90000);
-const AI_MAX_TOKENS = Number(process.env.AI_MAX_TOKENS || 120);
+const CHAT_TIMEOUT = Number(process.env.AI_TIMEOUT_MS || 65000);
 
 function buildSystemPrompt({ dialect = "syrian", context = "" } = {}) {
   return [
@@ -52,18 +51,18 @@ async function askAI(
         model: AI_MODEL,
         messages,
         stream: false,
+        keep_alive: "30m", // مهم: خلّي الموديل محمّل
         options: {
-          num_predict: AI_MAX_TOKENS,
+          num_predict: 80, // أقل = أسرع
           temperature: 0.2,
           top_p: 0.9,
           top_k: 40,
           repeat_penalty: 1.1,
-          num_ctx: 2048,
+          num_ctx: 1024, // سياق أصغر = أسرع
         },
       },
-      { timeout: AI_TIMEOUT_MS } // ← بدل 30000
+      { timeout: CHAT_TIMEOUT }
     );
-
     return (
       (r.data?.message?.content || "").trim() ||
       "تمام—خبرني تفاصيل طلبك (شحن/سحب + المبلغ + المعرّف)."

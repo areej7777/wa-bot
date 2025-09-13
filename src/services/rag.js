@@ -44,12 +44,10 @@ function normalizeDigits(s) {
 async function embed(q) {
   const r = await axios.post(
     OLLAMA_EMBED_URL,
-    {
-      model: EMBED_MODEL,
-      prompt: normalizeDigits(q),
-    },
-    { timeout: 30_000 }
+    { model: EMBED_MODEL, prompt: normalizeDigits(q), keep_alive: "30m" },
+    { timeout: 20000 }
   );
+
   return r.data?.embedding || r.data?.data?.[0]?.embedding || null;
 }
 

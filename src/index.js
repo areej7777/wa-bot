@@ -23,6 +23,10 @@ function remember(id) {
   for (const [k, t] of seen) if (now - t > 15 * 60 * 1000) seen.delete(k);
 }
 
+function clamp(s, max = 1200) {
+  return (s || "").slice(0, max);
+}
+
 // تدفّق إنشاء الحساب فقط
 const flow = new Map(); // phone -> { step: "await_username"|"await_password", name? }
 
@@ -244,7 +248,7 @@ async function handleMessage(from, text) {
       const aiReply = await askAI(text, {
         history: hist,
         dialect: "syrian",
-        context: ctx,
+        context: clamp(ctx, 1200),
       });
       await sendWhatsAppText(from, aiReply);
       convo.set(
