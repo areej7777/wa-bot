@@ -4,6 +4,7 @@ const express = require("express");
 const { askAI } = require("./services/ai");
 const { sendWhatsAppText } = require("./services/whatsapp");
 const { makeContext } = require("./services/rag");
+const axios = require("axios");
 
 // عتبات RAG
 const DIRECT_ANSWER = 0.85; // ≥ → رد مباشر من KB
