@@ -8,9 +8,11 @@ const axios = require("axios");
 const KB_PATH = path.join(__dirname, "../data/kb.js");
 const OUT_PATH = path.join(__dirname, "../data/index.json");
 
-// إعدادات Ollama Embeddings
-const OLLAMA_EMBED =
-  process.env.OLLAMA_EMBED || "http://127.0.0.1:11434/api/embeddings";
+const OLLAMA_BASE =
+  process.env.OLLAMA_BASE_URL ||
+  (process.env.OLLAMA_URL || "").replace(/\/api\/.*$/, "") ||
+  "http://ollama:11434";
+const OLLAMA_EMBED = `${OLLAMA_BASE.replace(/\/$/, "")}/api/embeddings`;
 const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
 
 // تطبيع الأرقام العربية -> لاتينية (يحسّن التطابق)

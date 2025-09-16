@@ -4,6 +4,15 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 
+// ...
+const OLLAMA_BASE =
+  process.env.OLLAMA_BASE_URL ||
+  (process.env.OLLAMA_URL || "").replace(/\/api\/.*$/, "") ||
+  "http://ollama:11434";
+const OLLAMA_EMBED = `${OLLAMA_BASE.replace(/\/$/, "")}/api/embeddings`;
+const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
+// ...
+
 // المسار الصحيح للفهرس من داخل src/services/ إلى data/index.json
 const INDEX_PATH = path.resolve(__dirname, "..", "..", "data", "index.json");
 
@@ -23,11 +32,6 @@ const INDEX = (Array.isArray(RAW_INDEX) ? RAW_INDEX : [])
     return { id, source, title, text, emb };
   })
   .filter((it) => Array.isArray(it.emb) && it.emb.length && it.text);
-
-// إعدادات خدمة الـ Embeddings
-const OLLAMA_EMBED =
-  process.env.OLLAMA_EMBED || "http://172.17.0.1:11434/api/embeddings";
-const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
 
 // نفس التطبيع للأرقام
 function normalizeDigits(s) {
