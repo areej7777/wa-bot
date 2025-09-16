@@ -26,7 +26,7 @@ const INDEX = (Array.isArray(RAW_INDEX) ? RAW_INDEX : [])
 
 // إعدادات خدمة الـ Embeddings
 const OLLAMA_EMBED =
-  process.env.OLLAMA_EMBED || "http://127.0.0.1:11434/api/embeddings";
+  process.env.OLLAMA_EMBED || "http://172.17.0.1:11434/api/embeddings";
 const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
 
 // نفس التطبيع للأرقام
