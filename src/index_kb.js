@@ -1,4 +1,3 @@
-// scripts/index_kb.js
 // يحوّل KB إلى فهرس Embeddings بسيط
 const fs = require("fs");
 const path = require("path");

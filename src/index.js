@@ -53,91 +53,39 @@ app.get("/webhook", (req, res) => {
 });
 
 // معالجة رسالة واحدة
+// داخل src/index.js
 async function handleMessage(from, text) {
   const hist = convo.get(from) || [];
 
-  // 1) نيّات فورية
-  const intent = routeIntent(text);
-  if (intent === "link") {
-    await sendWhatsAppText(from, `رابط موقعنا: ${SITE_URL}`);
+  try {
+    // سياق من الـRAG بس (بدون عتبات/فروع)
+    const { text: ctx } = await makeContext(text, { k: 3 });
+
+    // خليه يجاوب/يسأل السؤال الناقص بلهجة شامية
+    const aiReply = await askAI(text, {
+      history: hist,
+      dialect: "shami",
+      context: ctx,
+    });
+
+    await sendWhatsAppText(from, aiReply);
+
+    // ذاكرة قصيرة للحوار
     convo.set(
       from,
       [
         ...hist,
         { role: "user", content: text },
-        { role: "assistant", content: `رابط موقعنا: ${SITE_URL}` },
-      ].slice(-8)
+        { role: "assistant", content: aiReply },
+      ].slice(-10)
     );
-    return;
-  }
-  if (intent === "topup") {
-    const amount = extractAmount(text);
-    if (!amount) {
-      await sendWhatsAppText(from, "قدّيش المبلغ؟.");
-      return;
-    }
-    await sendWhatsAppText(
-      from,
-      `تمام! سجّلت ${amount}.  خبرني طريقة الدفع. ورقم العملية`
-    );
-    return;
-  }
-  if (intent === "withdraw") {
-    await sendWhatsAppText(
-      from,
-      "للسحب: ابعت قيمة السحب،  وطريقة الاستلام (محفظة/تحويل...)."
-    );
-    return;
-  }
-  if (intent === "pricing") {
-    await sendWhatsAppText(
-      from,
-      "الأسعار بتختلف حسب اللعبة والطريقة. اذكر اللعبة/الباقة المطلوبة وبعطيك السعر."
-    );
-    return;
-  }
-
-  // 2) RAG — القرار حسب الدرجة (هنا كان الخطأ عندك؛ لازم يكون داخل دالة async)
-  try {
-    const { text: ctx, score, hits } = await makeContext(text, { k: 3 });
-    console.log("RAG score:", score, "hit:", hits[0]?.id);
-
-    // تطابق عالي → رد مباشر من الـKB
-    if (score >= DIRECT_ANSWER && hits[0]) {
-      const firstLine = hits[0].text.split("\n")[0].trim();
-      await sendWhatsAppText(from, firstLine);
-      return;
-    }
-
-    // تطابق متوسط → مرّر سياق للـLLM
-    if (score >= CONTEXT_RANGE) {
-      const aiReply = await askAI(text, {
-        history: hist,
-        dialect: "syrian",
-        context: ctx,
-      });
-      await sendWhatsAppText(from, aiReply);
-      convo.set(
-        from,
-        [
-          ...hist,
-          { role: "user", content: text },
-          { role: "assistant", content: aiReply },
-        ].slice(-8)
-      );
-      return;
-    }
   } catch (e) {
-    console.error("RAG error:", e?.response?.data || e.message);
-    // نكمل للفولباك
+    console.error("Handle error:", e?.response?.data || e.message);
+    await sendWhatsAppText(
+      from,
+      "تعطّل بسيط… جرّب تكتب طلبك سطر واحد (شحن/سحب + المبلغ + المعرّف) 🙏"
+    );
   }
-
-  // 3) تطابق ضعيف → سؤال توضيحي (أسرع وأدق من تخمين LLM)
-  await sendWhatsAppText(
-    from,
-    "حدّدلي اللعبة/المنصّة أو المبلغ مشان جاوبك بدقّة 👍"
-  );
-  return;
 }
 
 // استقبال (POST) — نُعيد 200 فورًا، ونُكمل بالخلفية

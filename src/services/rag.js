@@ -11,7 +11,7 @@ const OLLAMA_BASE =
   "http://ollama:11434";
 const OLLAMA_EMBED = `${OLLAMA_BASE.replace(/\/$/, "")}/api/embeddings`;
 const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
-// ...
+//
 
 // المسار الصحيح للفهرس من داخل src/services/ إلى data/index.json
 const INDEX_PATH = path.resolve(__dirname, "..", "..", "data", "index.json");
