@@ -115,4 +115,25 @@ app.post("/webhook", (req, res) => {
 });
 
 const PORT = Number(process.env.PORT || 3000);
+async function warmup() {
+  try {
+    await axios.post(
+      `${(process.env.OLLAMA_BASE_URL || "http://ollama:11434").replace(
+        /\/$/,
+        ""
+      )}/api/generate`,
+      {
+        model: process.env.AI_MODEL || "qwen2.5:7b-instruct-q4_K_M",
+        prompt: "hi",
+        stream: false,
+        options: { num_predict: 4 },
+      },
+      { timeout: 20000 }
+    );
+    console.log("🔥 LLM warmed");
+  } catch (e) {
+    console.log("warmup skipped:", e.message);
+  }
+}
+warmup();
 app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Bot listening on ${PORT}`));
