@@ -2,7 +2,7 @@
 const axios = require("axios");
 
 const SITE_URL = process.env.SITE_URL || "https://www.ichancy.com/";
-const AI_MODEL = process.env.AI_MODEL || "qwen2.5:7b-instruct";
+const AI_MODEL = process.env.AI_MODEL;
 
 // شبكة Dokploy الداخلية
 const OLLAMA_BASE =
