@@ -6,7 +6,6 @@ const { sendWhatsAppText } = require("./services/whatsapp");
 const { makeContext } = require("./services/rag");
 const axios = require("axios");
 
-// عتبات RAG
 const DIRECT_ANSWER = 0.85; // ≥ → رد مباشر من KB
 const CONTEXT_RANGE = 0.65; // [0.65..0.85) → مرّر سياق للـLLM
 
@@ -16,8 +15,7 @@ app.use(express.json({ limit: "1mb" }));
 // صحّة
 app.get("/", (_, res) => res.status(200).send("ok"));
 
-// ذاكرة قصيرة + تفادي تكرار
-const convo = new Map(); // phone -> [{role,content}...]
+const convo = new Map();
 const seen = new Map(); // msg.id -> time
 function remember(id) {
   const now = Date.now();

@@ -3,7 +3,6 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 
-// مسارات الملفات
 const KB_PATH = path.join(__dirname, "../data/kb.js");
 const OUT_PATH = path.join(__dirname, "../data/index.json");
 
@@ -14,7 +13,6 @@ const OLLAMA_BASE =
 const OLLAMA_EMBED = `${OLLAMA_BASE.replace(/\/$/, "")}/api/embeddings`;
 const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
 
-// تطبيع الأرقام العربية -> لاتينية (يحسّن التطابق)
 function normalizeDigits(s) {
   const map = {
     "٠": "0",
@@ -31,8 +29,6 @@ function normalizeDigits(s) {
   return (s || "").replace(/[٠-٩]/g, (d) => map[d]);
 }
 
-// توسيع الاستعلام/النص بالمرادفات (يساعد الفهرسة)
-// ملاحظة: هذه فقط للفهرسة (نضيف المرادفات إلى النص المفهرس).
 const ALIASES = {
   payeer: ["payeer", "dollar", "عملات رقمية", "دولار", "دولار الكتروني"],
   USDT: ["usdt", "يو اس دي تي", "عملات رقمية", "دولار", "دولار الكتروني"],
