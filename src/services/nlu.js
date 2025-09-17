@@ -20,7 +20,8 @@ const norm = (s) =>
 
 const INTENTS = {
   signup:
-    /(انشا|انشاء|إنشاء|أنشئ|انشئ|افتح|أفتح|فتح|سجّل|سجل|تسجيل|اعمل|عمل|create account|sign ?up|register)/i,
+    /(?:(?:انشا|انشاء|إنشاء|أنشئ|انشئ|افتح|أفتح|فتح|سجّل|سجل|تسجيل|اعمل|عمل)\s*(?:حساب|اكونت)|بد[يي]\s*(?:انشئ|أنشئ|اعمل|افتح)\s*حساب|create\s*account|sign\s*up|register)/i,
+
   topup: /(شحن|اشحن|top ?up|رصيد|recharge|شحن حساب)/i,
   withdraw: /(سحب|withdraw|تحويل أموال|سحب رصيد)/i,
   link: /(رابط|لينك|website|site|موقع)/i,
