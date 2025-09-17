@@ -8,6 +8,7 @@ const axios = require("axios");
 
 const { createAccount } = require("./services/auth");
 const { detectIntent } = require("./services/nlu");
+const { planTopupLLM } = require("./services/topup_llm");
 
 // جلسات قصيرة: منخزّن حالة إنشاء الحساب فقط مؤقتًا
 const SESS = new Map(); // phone -> { flow: 'signup', step: 'username'|'password', data: {username} }
@@ -144,7 +145,38 @@ async function handleMessage(from, text) {
     await sendWhatsAppText(from, "أقل قيمة للسحب: 500000 ل.س ✅");
     return;
   }
+  if (intent === "topup" || SESS.get(from)?.flow === "topup") {
+    let st = SESS.get(from) || { flow: "topup", data: {} };
+    const plan = await planTopupLLM({
+      userText: text,
+      state: st,
+      minTopup: Number(process.env.MIN_TOPUP || 10000),
+      ollamaUrl: process.env.OLLAMA_URL, // نفس اللي بتستخدمه
+      model: process.env.AI_MODEL,
+    });
 
+    // حدّث الحالة
+    st.data = plan.fields;
+    SESS.set(from, st);
+
+    // إذا جاهز → سجّل (وهمي) وارسل تأكيد
+    if (plan.status === "ready") {
+      // مكان التنفيذ الحقيقي لاحقًا:
+      // await wallet.credit({ phone: from, ...plan.fields });
+      SESS.delete(from);
+      await sendWhatsAppText(
+        from,
+        `تم تسجيل الشحن ✅\nالطريقة: ${
+          plan.fields.method
+        }\nالمبلغ: ${plan.fields.amount.toLocaleString()} ل.س\nرقم العملية: ${
+          plan.fields.txid
+        }\nرح يوصلك تثبيت بعد المعالجة خلال دقائق.`
+      );
+      return;
+    }
+    await sendWhatsAppText(from, plan.reply);
+    return;
+  }
   // RAG → LLM (حسب ما مركّبه عندك)
   try {
     const { text: ctx, score } = await makeContext(text, { k: 1 });
