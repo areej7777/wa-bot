@@ -20,7 +20,7 @@ const norm = (s) =>
 
 const INTENTS = {
   signup:
-    /(انشا|إنشاء|سجل|تسجيل|اعمل حساب|بد[يي] اعمل حساب|create account|sign ?up|register)/i,
+    /(انشا|انشاء|إنشاء|أنشئ|انشئ|افتح|أفتح|فتح|سجّل|سجل|تسجيل|اعمل|عمل|create account|sign ?up|register)/i,
   topup: /(شحن|اشحن|top ?up|رصيد|recharge|شحن حساب)/i,
   withdraw: /(سحب|withdraw|تحويل أموال|سحب رصيد)/i,
   link: /(رابط|لينك|website|site|موقع)/i,
@@ -41,18 +41,7 @@ function extractAmount(t) {
   const m = t.match(/\b([0-9][0-9\.,]{0,9})\b/);
   return m ? parseInt(m[1].replace(/[^\d]/g, ""), 10) : null;
 }
-function extractGame(t) {
-  t = norm(t);
-  const map = {
-    mlbb: /(mlbb|mobile legends|موبايل ليجند)/,
-    pubg: /(pubg|ببجي)/,
-    freefire: /(free ?fire|فري فاير)/,
-    codm: /(codm|call ?of ?duty|كول اوف ديوتي)/,
-    fortnite: /(fortnite|فورتنايت)/,
-  };
-  for (const [k, re] of Object.entries(map)) if (re.test(t)) return k;
-  return null;
-}
+
 function extractMethod(t) {
   t = norm(t);
   if (/(syriatel|سيريتيل|كاش)/.test(t)) return "سيريتيل كاش";

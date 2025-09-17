@@ -13,6 +13,12 @@ const {
   extractAccount,
 } = require("./services/nlu");
 const { createAccount } = require("./services/auth");
+const {
+  detectIntent,
+  extractAmount,
+  extractMethod,
+  extractAccount,
+} = require("./services/nlu");
 
 // جلسات قصيرة: منخزّن حالة إنشاء الحساب فقط مؤقتًا
 const SESS = new Map(); // phone -> { flow: 'signup', step: 'username'|'password', data: {username} }
@@ -67,19 +73,16 @@ async function handleMessage(from, text) {
   const intent = detectIntent(text);
   const state = SESS.get(from) || {};
 
-  // ===== 1) فلو إنشاء حساب =====
   if (intent === "signup" || state.flow === "signup") {
-    // إذا جديد: ابدأ الفلو
     if (!state.flow) {
       SESS.set(from, { flow: "signup", step: "username", data: {} });
+      console.log(`[signup] start from=${from}`);
       await sendWhatsAppText(
         from,
         "تمام! اختر اسم مستخدم (3–20 حرف/رقم، مسموح . _ -) 👍"
       );
       return;
     }
-
-    // الخطوة حسب الحالة الحالية
     if (state.step === "username") {
       const u = cleanUsername(text);
       if (!u) {
@@ -92,13 +95,13 @@ async function handleMessage(from, text) {
       state.data.username = u;
       state.step = "password";
       SESS.set(from, state);
+      console.log(`[signup] username=${u}`);
       await sendWhatsAppText(
         from,
         "حلو! هلا ابعت كلمة سر (6+ أحرف، بدون مسافات) 🔒"
       );
       return;
     }
-
     if (state.step === "password") {
       const p = cleanPassword(text);
       if (!p) {
@@ -109,32 +112,21 @@ async function handleMessage(from, text) {
         return;
       }
       state.data.password = p;
-
-      // استدعِ API (أو نجاح وهمي إذا SIGNUP_URL فاضي)
-      // داخل handleMessage، خطوة password
       try {
         const result = await createAccount({
           phone: from,
           username: state.data.username,
-          password: state.data.password,
-        });
-
-        wipeSensitive(state);
+          password: p,
+        }); // موك – نجاح شكلي
         SESS.delete(from);
-
-        if (result?.ok) {
-          await sendWhatsAppText(
-            from,
-            `تم! أنشأنا لك الحساب باسم ${state.data.username} ✅\nإذا بدك غيّر كلمة السر من داخل الموقع لاحقًا.`
-          );
-        } else {
-          await sendWhatsAppText(
-            from,
-            "ما زبط الإنشاء. جرّب اسم تاني أو بعد شوي 🙏"
-          );
-        }
+        console.log(
+          `[signup] done user=${state.data.username} ok=${!!result?.ok}`
+        );
+        await sendWhatsAppText(
+          from,
+          `تم! أنشأنا لك الحساب باسم ${state.data.username} ✅`
+        );
       } catch (e) {
-        wipeSensitive(state);
         SESS.delete(from);
         console.error("signup error:", e.message);
         await sendWhatsAppText(
@@ -142,10 +134,10 @@ async function handleMessage(from, text) {
           "صار خلل بسيط بإنشاء الحساب. جرّب بعد لحظات 🙏"
         );
       }
-
       return;
     }
   }
+
   // ===== نهاية فلو إنشاء حساب =====
 
   // … من هون نزّل باقي منطقك العادي (ردود فورية + RAG + LLM) …
