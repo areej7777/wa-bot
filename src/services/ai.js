@@ -62,6 +62,7 @@ async function askAI(userText, { history = [], context = "" } = {}) {
           top_k: 40,
           repeat_penalty: 1.15,
           num_ctx: 2048,
+          keep_alive: "24h",
           // نقاط توقف لتقصير الرد
           stop: ["\n\nالمستخدم:", "\n\nUser:", "\n\nassistant:"],
         },

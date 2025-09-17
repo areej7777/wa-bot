@@ -6,8 +6,8 @@ const { sendWhatsAppText } = require("./services/whatsapp");
 const { makeContext } = require("./services/rag");
 const axios = require("axios");
 
-const DIRECT_ANSWER = 0.85; // ≥ → رد مباشر من KB
-const CONTEXT_RANGE = 0.65; // [0.65..0.85) → مرّر سياق للـLLM
+const DIRECT_ANSWER = 0.85;
+const CONTEXT_RANGE = 0.65;
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -125,9 +125,9 @@ async function warmup() {
         model: process.env.AI_MODEL || "qwen2.5:7b-instruct-q4_K_M",
         prompt: "hi",
         stream: false,
-        options: { num_predict: 4 },
+        options: { num_predict: 4, keep_alive: "24h" },
       },
-      { timeout: 20000 }
+      { timeout: 12000 }
     );
     console.log("🔥 LLM warmed");
   } catch (e) {

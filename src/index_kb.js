@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
-
+لهف;
 const KB_PATH = path.join(__dirname, "../data/kb.js");
 const OUT_PATH = path.join(__dirname, "../data/index.json");
 
