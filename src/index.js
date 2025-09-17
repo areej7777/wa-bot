@@ -5,6 +5,17 @@ const { askAI } = require("./services/ai");
 const { sendWhatsAppText } = require("./services/whatsapp");
 const { makeContext } = require("./services/rag");
 const axios = require("axios");
+const {
+  detectIntent,
+  extractAmount,
+  extractGame,
+  extractMethod,
+  extractAccount,
+} = require("./services/nlu");
+const { createAccount } = require("./services/auth");
+
+// جلسات قصيرة: منخزّن حالة إنشاء الحساب فقط مؤقتًا
+const SESS = new Map(); // phone -> { flow: 'signup', step: 'username'|'password', data: {username} }
 
 const DIRECT_ANSWER = 0.85;
 const CONTEXT_RANGE = 0.65;
@@ -26,20 +37,6 @@ function remember(id) {
 // الموقع (فضّلي ضبطه من Environment)
 const SITE_URL = process.env.SITE_URL || "https://www.ichancy.com/";
 
-// نيّات سريعة
-function routeIntent(txt) {
-  const t = (txt || "").normalize("NFKC").toLowerCase();
-  if (/(رابط|لينك|website|site|موقع)/i.test(t)) return "link";
-  if (/(شحن|اشحن|رصيد|شدات|gems|top ?up)/i.test(t)) return "topup";
-  if (/(سحب|اسحب|withdraw)/i.test(t)) return "withdraw";
-  if (/(سعر|اسعار|باقات|العروض)/i.test(t)) return "pricing";
-  return null;
-}
-function extractAmount(txt) {
-  const m = (txt || "").match(/(\d{1,7})/); // up to 7 digits
-  return m ? parseInt(m[1], 10) : null;
-}
-
 // التحقق (GET)
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
@@ -51,40 +48,143 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-// معالجة رسالة واحدة
-// داخل src/index.js
+function cleanUsername(s) {
+  const u = (s || "").trim().match(/@?([a-zA-Z0-9._-]{3,20})/);
+  return u ? u[1] : null;
+}
+function cleanPassword(s) {
+  const p = (s || "").trim();
+  // الحد الأدنى، بدون مسافات
+  if (p.length >= 6 && !/\s/.test(p)) return p;
+  return null;
+}
+function wipeSensitive(state) {
+  if (state?.data) state.data.password = undefined;
+}
+
 async function handleMessage(from, text) {
   const hist = convo.get(from) || [];
+  const intent = detectIntent(text);
+  const state = SESS.get(from) || {};
 
-  try {
-    // سياق من الـRAG بس (بدون عتبات/فروع)
-    const { text: ctx } = await makeContext(text, { k: 3 });
+  // ===== 1) فلو إنشاء حساب =====
+  if (intent === "signup" || state.flow === "signup") {
+    // إذا جديد: ابدأ الفلو
+    if (!state.flow) {
+      SESS.set(from, { flow: "signup", step: "username", data: {} });
+      await sendWhatsAppText(
+        from,
+        "تمام! اختر اسم مستخدم (3–20 حرف/رقم، مسموح . _ -) 👍"
+      );
+      return;
+    }
 
-    // خليه يجاوب/يسأل السؤال الناقص بلهجة شامية
-    const aiReply = await askAI(text, {
-      history: hist,
-      dialect: "shami",
-      context: ctx,
-    });
+    // الخطوة حسب الحالة الحالية
+    if (state.step === "username") {
+      const u = cleanUsername(text);
+      if (!u) {
+        await sendWhatsAppText(
+          from,
+          "ما ظبط. ابعت اسم مستخدم بدون مسافات، مثل: ichancy_2025"
+        );
+        return;
+      }
+      state.data.username = u;
+      state.step = "password";
+      SESS.set(from, state);
+      await sendWhatsAppText(
+        from,
+        "حلو! هلا ابعت كلمة سر (6+ أحرف، بدون مسافات) 🔒"
+      );
+      return;
+    }
 
-    await sendWhatsAppText(from, aiReply);
+    if (state.step === "password") {
+      const p = cleanPassword(text);
+      if (!p) {
+        await sendWhatsAppText(
+          from,
+          "الكلمة قصيرة أو فيها مسافة. جرّب كلمة سر أطول بدون مسافات 🔒"
+        );
+        return;
+      }
+      state.data.password = p;
 
-    // ذاكرة قصيرة للحوار
-    convo.set(
-      from,
-      [
-        ...hist,
-        { role: "user", content: text },
-        { role: "assistant", content: aiReply },
-      ].slice(-10)
-    );
-  } catch (e) {
-    console.error("Handle error:", e?.response?.data || e.message);
-    await sendWhatsAppText(
-      from,
-      "تعطّل بسيط… جرّب تكتب طلبك سطر واحد (شحن/سحب + المبلغ + المعرّف) 🙏"
-    );
+      // استدعِ API (أو نجاح وهمي إذا SIGNUP_URL فاضي)
+      // داخل handleMessage، خطوة password
+      try {
+        const result = await createAccount({
+          phone: from,
+          username: state.data.username,
+          password: state.data.password,
+        });
+
+        wipeSensitive(state);
+        SESS.delete(from);
+
+        if (result?.ok) {
+          await sendWhatsAppText(
+            from,
+            `تم! أنشأنا لك الحساب باسم ${state.data.username} ✅\nإذا بدك غيّر كلمة السر من داخل الموقع لاحقًا.`
+          );
+        } else {
+          await sendWhatsAppText(
+            from,
+            "ما زبط الإنشاء. جرّب اسم تاني أو بعد شوي 🙏"
+          );
+        }
+      } catch (e) {
+        wipeSensitive(state);
+        SESS.delete(from);
+        console.error("signup error:", e.message);
+        await sendWhatsAppText(
+          from,
+          "صار خلل بسيط بإنشاء الحساب. جرّب بعد لحظات 🙏"
+        );
+      }
+
+      return;
+    }
   }
+  // ===== نهاية فلو إنشاء حساب =====
+
+  // … من هون نزّل باقي منطقك العادي (ردود فورية + RAG + LLM) …
+  // مثال: ردود فورية شائعة
+  const t = (text || "").toLowerCase();
+  if (/(رابط|لينك|website|site|موقع)/.test(t)) {
+    await sendWhatsAppText(from, `رابطنا: ${SITE_URL} ✅`);
+    return;
+  }
+  if (/(اقل|أدنى|ادنى).{0,8}(شحن)/.test(t)) {
+    await sendWhatsAppText(from, "أقل قيمة للشحن: 10000 ل.س ✅");
+    return;
+  }
+  if (/(اقل|أدنى|ادنى).{0,8}(سحب)/.test(t)) {
+    await sendWhatsAppText(from, "أقل قيمة للسحب: 500000 ل.س ✅");
+    return;
+  }
+
+  // RAG → LLM (حسب ما مركّبه عندك)
+  try {
+    const { text: ctx, score } = await makeContext(text, { k: 1 });
+    if (score >= 0.82 && ctx) {
+      await sendWhatsAppText(from, ctx.split("\n")[0].trim());
+      return;
+    }
+  } catch {}
+
+  // LLM (مختصر وسريع) – نفس askAI اللي عندك
+  const aiReply = await askAI(text, { history: hist, dialect: "shami" });
+  await sendWhatsAppText(from, aiReply);
+
+  convo.set(
+    from,
+    [
+      ...hist,
+      { role: "user", content: text },
+      { role: "assistant", content: aiReply },
+    ].slice(-8)
+  );
 }
 
 // استقبال (POST) — نُعيد 200 فورًا، ونُكمل بالخلفية
