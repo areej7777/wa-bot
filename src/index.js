@@ -7,12 +7,7 @@ const { makeContext } = require("./services/rag");
 const axios = require("axios");
 
 const { createAccount } = require("./services/auth");
-const {
-  detectIntent,
-  extractAmount,
-  extractMethod,
-  extractAccount,
-} = require("./services/nlu");
+const { detectIntent } = require("./services/nlu");
 
 // جلسات قصيرة: منخزّن حالة إنشاء الحساب فقط مؤقتًا
 const SESS = new Map(); // phone -> { flow: 'signup', step: 'username'|'password', data: {username} }

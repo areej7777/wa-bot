@@ -62,7 +62,7 @@ module.exports = {
   norm,
   detectIntent,
   extractAmount,
-  extractGame,
+
   extractMethod,
   extractAccount,
 };
