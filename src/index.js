@@ -5,13 +5,7 @@ const { askAI } = require("./services/ai");
 const { sendWhatsAppText } = require("./services/whatsapp");
 const { makeContext } = require("./services/rag");
 const axios = require("axios");
-const {
-  detectIntent,
-  extractAmount,
-  extractGame,
-  extractMethod,
-  extractAccount,
-} = require("./services/nlu");
+
 const { createAccount } = require("./services/auth");
 const {
   detectIntent,
