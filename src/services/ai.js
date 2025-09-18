@@ -56,12 +56,12 @@ async function askAI(userText, { history = [], context = "" } = {}) {
         stream: false,
         options: {
           // أسرع + طائع
-          num_predict: 64, // قلّل الطول لسرعة أعلى
+          num_predict: 48, // قلّل الطول لسرعة أعلى
           temperature: Number(process.env.AI_TEMPERATURE ?? 0.2),
           top_p: 0.9,
           top_k: 40,
           repeat_penalty: 1.15,
-          num_ctx: 2048,
+          num_ctx: 1024,
           keep_alive: "24h",
           // نقاط توقف لتقصير الرد
           stop: ["\n\nالمستخدم:", "\n\nUser:", "\n\nassistant:"],

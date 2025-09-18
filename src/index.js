@@ -19,6 +19,16 @@ const CONTEXT_RANGE = 0.65;
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
+const LOCKS = new Map();
+async function runLocked(key, fn) {
+  while (LOCKS.get(key)) await new Promise((r) => setTimeout(r, 40));
+  LOCKS.set(key, true);
+  try {
+    return await fn();
+  } finally {
+    LOCKS.delete(key);
+  }
+}
 // صحّة
 app.get("/", (_, res) => res.status(200).send("ok"));
 
@@ -215,9 +225,8 @@ app.post("/webhook", (req, res) => {
 
     const from = msg.from;
     const text = msg.text?.body || "";
-
     setImmediate(() =>
-      handleMessage(from, text).catch((e) =>
+      runLocked(from, () => handleMessage(from, text)).catch((e) =>
         console.error("Handle error:", e?.response?.data || e.message)
       )
     );
