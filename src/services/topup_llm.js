@@ -203,4 +203,29 @@ async function planTopupLLM({
   };
 }
 
-module.exports = { planTopupLLM };
+// من الحالة الحالية حدّد شو اللازم فعلياً
+function computeNeedFromState(state, minTopup) {
+  const d = state?.data || {};
+  if (!d.method) return "method";
+  if (!validTxid(d.txid || "")) return "txid";
+  if (!(Number(d.amount) >= minTopup)) return "amount";
+  return "none";
+}
+
+// حاول تملّي الحقل المطلوب محلياً من رسالة المستخدم بدون LLM
+function quickFillFromUser(text, need, minTopup) {
+  const out = {};
+  const t = (text || "").trim();
+  if (need === "method") {
+    const m = canonMethod(t);
+    if (m) out.method = m;
+  } else if (need === "txid") {
+    if (validTxid(t)) out.txid = t;
+  } else if (need === "amount") {
+    const amt = parseAmount(t);
+    if (amt && amt >= minTopup) out.amount = amt;
+  }
+  return out;
+}
+
+module.exports = { planTopupLLM, quickFillFromUser, computeNeedFromState };

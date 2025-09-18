@@ -8,7 +8,11 @@ const axios = require("axios");
 
 const { createAccount } = require("./services/auth");
 const { detectIntent } = require("./services/nlu");
-const { planTopupLLM } = require("./services/topup_llm");
+const {
+  planTopupLLM,
+  computeNeedFromState,
+  quickFillFromUser,
+} = require("./services/topup_llm");
 
 // جلسات قصيرة: منخزّن حالة إنشاء الحساب فقط مؤقتًا
 const SESS = new Map(); // phone -> { flow: 'signup', step: 'username'|'password', data: {username} }
@@ -157,6 +161,79 @@ async function handleMessage(from, text) {
   }
   if (intent === "topup" || SESS.get(from)?.flow === "topup") {
     let st = SESS.get(from) || { flow: "topup", data: {} };
+    // ==== LLM TOPUP FLOW ====
+    if (intent === "topup" || SESS.get(from)?.flow === "topup") {
+      let st = SESS.get(from) || { flow: "topup", data: {} };
+      const minTopup = Number(process.env.MIN_TOPUP || 10000);
+
+      // 1) جرّب تعبّي محلياً إذا الرسالة بتلبّي الحاجة الحالية
+      const needNow = computeNeedFromState(st, minTopup); // method | txid | amount | none
+      const filled = quickFillFromUser(text, needNow, minTopup);
+      if (Object.keys(filled).length) {
+        st.data = { ...st.data, ...filled };
+        SESS.set(from, st);
+
+        // بعد التعبئة، شوف إذا باقي شي
+        const needAfter = computeNeedFromState(st, minTopup);
+        if (needAfter === "none") {
+          // تمّت العملية (هنا إضافة رصيد وهمية)
+          // await wallet.credit({ phone: from, ...st.data });
+          SESS.delete(from);
+          await sendWhatsAppText(
+            from,
+            `تم تسجيل الشحن ✅\nالطريقة: ${
+              st.data.method
+            }\nالمبلغ: ${st.data.amount.toLocaleString()} ل.س\nرقم العملية: ${
+              st.data.txid
+            }`
+          );
+          return;
+        } else {
+          // اسأل الخطوة التالية مباشرة بدون LLM (رسائل ثابتة سريعة)
+          const nextMsg =
+            needAfter === "method"
+              ? "اختر طريقة الدفع: سيريتيل كاش / USDT / بيمو / بايير / هرم 👍"
+              : needAfter === "txid"
+              ? "ابعت رقم العملية/الإيصال متل ما هو 🔢"
+              : `قديش المبلغ؟ (الحد الأدنى ${minTopup} ل.س)`;
+          await sendWhatsAppText(from, nextMsg);
+          return;
+        }
+      }
+
+      // 2) إذا الرسالة مو واضحة، استعن بالبلانر LLM (JSON فقط + مهلة قصيرة)
+      const plan = await planTopupLLM({
+        userText: text,
+        state: st,
+        minTopup,
+        ollamaUrl: process.env.OLLAMA_URL,
+        model: process.env.PLANNER_MODEL || process.env.AI_MODEL, // تقدر تخصّص موديل أخف للبلانر
+      });
+
+      // حدّث الحالة ورد
+      st.data = plan.fields;
+      SESS.set(from, st);
+
+      if (plan.status === "ready") {
+        // تنفيذ وهمي
+        // await wallet.credit({ phone: from, ...plan.fields });
+        SESS.delete(from);
+        await sendWhatsAppText(
+          from,
+          `تم تسجيل الشحن ✅\nالطريقة: ${
+            plan.fields.method
+          }\nالمبلغ: ${plan.fields.amount.toLocaleString()} ل.س\nرقم العملية: ${
+            plan.fields.txid
+          }`
+        );
+        return;
+      }
+
+      await sendWhatsAppText(from, plan.reply);
+      return;
+    }
+    // ==== END LLM TOPUP FLOW ====
+
     const plan = await planTopupLLM({
       userText: text,
       state: st,
